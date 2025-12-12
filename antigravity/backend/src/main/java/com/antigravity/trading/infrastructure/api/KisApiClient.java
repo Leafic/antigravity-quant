@@ -2,6 +2,7 @@ package com.antigravity.trading.infrastructure.api;
 
 import com.antigravity.trading.infrastructure.api.dto.KisBalanceResponse;
 import com.antigravity.trading.infrastructure.api.dto.KisTokenResponse;
+import com.antigravity.trading.infrastructure.api.dto.KisChartResponse;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
