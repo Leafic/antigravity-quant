@@ -25,3 +25,9 @@ logging:
   level:
     com.antigravity: DEBUG
     org.springframework: INFO
+
+kis:
+  app-key: "${KIS_APP_KEY:YOUR_APP_KEY}"
+  app-secret: "${KIS_APP_SECRET:YOUR_APP_SECRET}"
+  account-no: "${KIS_ACCOUNT_NO:YOUR_ACCOUNT_NO}"
+  base-url: "https://openapivts.koreainvestment.com:29443"

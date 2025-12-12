@@ -43,5 +43,9 @@ yarn-error.log*
 # Docker
 .docker/
 
+# Credentials
+antigravity/backend/src/main/resources/application.yml
+antigravity/backend/src/main/resources/application-secret.yml
+
 # Temp
 tmp/

@@ -20,7 +20,7 @@ public class TestController {
 
     @PostMapping("/screen")
     public ResponseEntity<String> triggerScreening() {
-        screenerService.runDailyScreening();
+        screenerService.executeScreening();
         return ResponseEntity.ok("Universe Screening Triggered (Phase 1)");
     }
 

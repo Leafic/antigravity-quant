@@ -28,16 +28,18 @@ public class UniverseScreenerService {
      */
     @Scheduled(cron = "0 30 8 * * *") // 매일 08:30:00 실행
     @Transactional
-    public void runDailyScreening() {
-        log.info("[Phase 1] Starting daily universe screening...");
+    public void executeScreening() {
+        log.info("Phase 1: Starting Universe Screening...");
 
-        // 1. 기존 타겟 비활성화
+        // 1. Deactivate all existing targets
         deactivateOldTargets();
 
-        // 2. 새로운 타겟 선정 (Mock: Top 2 Fixed)
-        selectNewTargets();
+        // 2. Add Fixed Targets (Requested by User)
+        // 006620 (DongKoo Bio & Pharma), 314130 (Genome & Company)
+        addTarget("006620", "동구바이오제약");
+        addTarget("314130", "지놈앤컴퍼니");
 
-        log.info("[Phase 1] Universe screening completed.");
+        log.info("Phase 1: Screening Complete. Targets Updated.");
     }
 
     private void deactivateOldTargets() {
@@ -49,20 +51,14 @@ public class UniverseScreenerService {
         log.info("Deactivated {} old target stocks.", activeStocks.size());
     }
 
-    private void selectNewTargets() {
-        // 실제 로직: KIS API 등을 통해 거래대금 상위 종목 조회 및 필터링
-        // Mock 로직: 삼성전자, SK하이닉스 고정 추가
-
-        createTarget("005930", "삼성전자", "KOSPI", "Electrical/Electronic");
-        createTarget("000660", "SK하이닉스", "KOSPI", "Electrical/Electronic");
-    }
-
-    private void createTarget(String symbol, String name, String market, String sector) {
+    // Renamed from createTarget for clarity and to match new logic
+    private void addTarget(String symbol, String name) {
+        // Default market/sector for simplified logic
         TargetStock target = TargetStock.builder()
                 .symbol(symbol)
                 .name(name)
-                .market(market)
-                .sector(sector)
+                .market("KOSDAQ") // Assuming these are KOSDAQ for now or generic
+                .sector("Bio/Pharma")
                 .createdAt(LocalDateTime.now())
                 .isActive(true)
                 .build();
