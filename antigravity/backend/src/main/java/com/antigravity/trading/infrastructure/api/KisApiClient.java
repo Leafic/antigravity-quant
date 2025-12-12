@@ -119,6 +119,40 @@ public class KisApiClient {
     }
 
     /**
+     * 일봉 차트 조회 (기간별)
+     * KIS API: 국내주식기간별시세 (거래량 집계)
+     * TR_ID: FHKST01010100
+     */
+    public KisChartResponse getDailyChart(String symbol) {
+        String token = getAccessToken();
+
+        // 날짜 계산: 최근 100일
+        String today = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now());
+        String past = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
+                .format(LocalDateTime.now().minusDays(100));
+
+        log.debug("Fetching daily chart for {} from {} to {}", symbol, past, today);
+
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice")
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                        .queryParam("FID_INPUT_ISCD", symbol)
+                        .queryParam("FID_INPUT_DATE_1", past)
+                        .queryParam("FID_INPUT_DATE_2", today)
+                        .queryParam("FID_PERIOD_DIV_CODE", "D") // D:일봉, W:주봉, M:월봉
+                        .queryParam("FID_ORG_ADJ_PRC", "1") // 1:수정주가
+                        .build())
+                .header("authorization", "Bearer " + token)
+                .header("appkey", appKey)
+                .header("appsecret", appSecret)
+                .header("tr_id", "FHKST03010100") // 국내주식기간별시세
+                .retrieve()
+                .bodyToMono(KisChartResponse.class)
+                .block();
+    }
+
+    /**
      * 현재가 조회 (Mock 유지 - 실시간 시세는 웹소켓이 유리함)
      */
     public BigDecimal getCurrentPrice(String symbol) {

@@ -15,19 +15,46 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CandleController {
 
-    private final CandleHistoryRepository candleHistoryRepository;
+    private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
 
     @GetMapping
-    public ResponseEntity<List<CandleHistory>> getCandles(
-            @RequestParam String symbol,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
+    public ResponseEntity<List<CandleDto>> getCandles(@RequestParam String symbol) {
+        // Fetch Real Daily Chart from KIS API
+        var chartResponse = kisApiClient.getDailyChart(symbol);
 
-        // Default range: Last 24 hours if not specified
-        LocalDateTime effectiveEnd = (end != null) ? end : LocalDateTime.now();
-        LocalDateTime effectiveStart = (start != null) ? start : effectiveEnd.minusHours(24);
+        if (chartResponse == null || chartResponse.getOutput2() == null) {
+            return ResponseEntity.ok(List.of());
+        }
 
-        return ResponseEntity
-                .ok(candleHistoryRepository.findBySymbolAndTimeBetween(symbol, effectiveStart, effectiveEnd));
+        // Convert to DTO (Simplified for Frontend)
+        List<CandleDto> candles = chartResponse.getOutput2().stream()
+                .map(this::toDto)
+                .sorted((a, b) -> a.getTime().compareTo(b.getTime())) // KIS default might be descending
+                .toList();
+
+        return ResponseEntity.ok(candles);
+    }
+
+    private CandleDto toDto(com.antigravity.trading.infrastructure.api.dto.KisChartResponse.Output2 output) {
+        // output.stckBsopDate -> "20241212"
+        String dateStr = output.getStckBsopDate();
+        String formattedDate = dateStr.substring(0, 4) + "-" + dateStr.substring(4, 6) + "-" + dateStr.substring(6, 8);
+
+        return new CandleDto(
+                formattedDate, // treating as string for simple frontend handling
+                new java.math.BigDecimal(output.getStckOprc()),
+                new java.math.BigDecimal(output.getStckHgpr()),
+                new java.math.BigDecimal(output.getStckLwpr()),
+                new java.math.BigDecimal(output.getStckClpr()));
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    public static class CandleDto {
+        private String time;
+        private java.math.BigDecimal open;
+        private java.math.BigDecimal high;
+        private java.math.BigDecimal low;
+        private java.math.BigDecimal close;
     }
 }

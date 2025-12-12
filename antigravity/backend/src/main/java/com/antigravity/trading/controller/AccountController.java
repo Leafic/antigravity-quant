@@ -23,18 +23,23 @@ public class AccountController {
 
     @GetMapping("/balance")
     public ResponseEntity<Map<String, Object>> getBalance() {
-        KisBalanceResponse response = kisApiClient.getAccountBalance();
-        Map<String, Object> result = new HashMap<>();
+        try {
+            KisBalanceResponse response = kisApiClient.getAccountBalance();
+            Map<String, Object> result = new HashMap<>();
 
-        if (response != null && response.getOutput2() != null && !response.getOutput2().isEmpty()) {
-            KisBalanceResponse.Output2 summary = response.getOutput2().get(0);
-            result.put("totalEvaluation", summary.getTotEvluAmt());
-            result.put("deposit", summary.getDncaTotAmt());
-        } else {
-            result.put("totalEvaluation", "0");
-            result.put("deposit", "0");
+            if (response != null && response.getOutput2() != null && !response.getOutput2().isEmpty()) {
+                KisBalanceResponse.Output2 summary = response.getOutput2().get(0);
+                result.put("totalEvaluation", summary.getTotEvluAmt());
+                result.put("deposit", summary.getDncaTotAmt());
+            } else {
+                result.put("totalEvaluation", "0");
+                result.put("deposit", "0");
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            e.printStackTrace(); // Log error for docker logs
+            return ResponseEntity.ok(Map.of("totalEvaluation", "0", "deposit", "0"));
         }
-        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/holdings")
