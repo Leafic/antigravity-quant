@@ -26,5 +26,21 @@ export const api = {
     getCandles: async (symbol: string): Promise<any[]> => {
         const res = await fetch(`${API_BASE_URL}/candles?symbol=${symbol}`);
         return res.json();
+    },
+
+    // Account
+    getBalance: async (): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/account/balance`);
+        return res.json();
+    },
+    getHoldings: async (): Promise<any[]> => {
+        const res = await fetch(`${API_BASE_URL}/account/holdings`);
+        return res.json();
+    },
+
+    // Targets
+    getTargets: async (): Promise<any[]> => {
+        const res = await fetch(`${API_BASE_URL}/targets`);
+        return res.json();
     }
 };

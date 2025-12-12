@@ -85,16 +85,16 @@ public class KisApiClient {
     }
 
     /**
-     * 주식 잔고 조회 (예수금/평가금)
+     * 주식 잔고 조회 (Full Response)
      */
-    public Map<String, BigDecimal> getAccountBalance() {
+    public KisBalanceResponse getAccountBalance() {
         String token = getAccessToken();
         String cano = accountNo.substring(0, 8);
         String prdt = "01"; // Default product code
 
         log.debug("Fetching account balance for {}-{}", cano, prdt);
 
-        KisBalanceResponse response = webClient.get()
+        return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/uapi/domestic-stock/v1/trading/inquire-balance")
                         .queryParam("CANO", cano)
@@ -116,20 +116,6 @@ public class KisApiClient {
                 .retrieve()
                 .bodyToMono(KisBalanceResponse.class)
                 .block();
-
-        Map<String, BigDecimal> result = new HashMap<>();
-        if (response != null && "0".equals(response.getRtCd()) && response.getOutput2() != null
-                && !response.getOutput2().isEmpty()) {
-            KisBalanceResponse.Output2 output = response.getOutput2().get(0);
-            result.put("totalEvaluation", new BigDecimal(output.getTotEvluAmt()));
-            result.put("deposit", new BigDecimal(output.getDncaTotAmt()));
-        } else {
-            // Fallback or Error
-            log.error("Failed to fetch balance: {}", response != null ? response.getMsg1() : "No Response");
-            result.put("totalEvaluation", BigDecimal.ZERO);
-            result.put("deposit", BigDecimal.ZERO);
-        }
-        return result;
     }
 
     /**
