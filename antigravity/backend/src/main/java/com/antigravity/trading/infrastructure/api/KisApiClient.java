@@ -3,6 +3,7 @@ package com.antigravity.trading.infrastructure.api;
 import com.antigravity.trading.infrastructure.api.dto.KisBalanceResponse;
 import com.antigravity.trading.infrastructure.api.dto.KisTokenResponse;
 import com.antigravity.trading.infrastructure.api.dto.KisChartResponse;
+import com.antigravity.trading.infrastructure.api.dto.KisMinuteChartResponse;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -124,30 +125,38 @@ public class KisApiClient {
      * KIS API: 국내주식기간별시세 (거래량 집계)
      * TR_ID: FHKST01010100
      */
+    /**
+     * 일봉 차트 조회 (기간별)
+     * KIS API: 국내주식기간별시세
+     */
     public KisChartResponse getDailyChart(String symbol) {
+        // Default: Last 100 days
+        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime start = end.minusDays(100);
+        return getDailyChart(symbol, start, end);
+    }
+
+    public KisChartResponse getDailyChart(String symbol, LocalDateTime start, LocalDateTime end) {
         String token = getAccessToken();
+        String startStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(start);
+        String endStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(end);
 
-        // 날짜 계산: 최근 100일
-        String today = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now());
-        String past = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
-                .format(LocalDateTime.now().minusDays(100));
-
-        log.debug("Fetching daily chart for {} from {} to {}", symbol, past, today);
+        log.debug("Fetching daily chart for {} from {} to {}", symbol, startStr, endStr);
 
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice")
                         .queryParam("FID_COND_MRKT_DIV_CODE", "J")
                         .queryParam("FID_INPUT_ISCD", symbol)
-                        .queryParam("FID_INPUT_DATE_1", past)
-                        .queryParam("FID_INPUT_DATE_2", today)
-                        .queryParam("FID_PERIOD_DIV_CODE", "D") // D:일봉, W:주봉, M:월봉
-                        .queryParam("FID_ORG_ADJ_PRC", "1") // 1:수정주가
+                        .queryParam("FID_INPUT_DATE_1", startStr)
+                        .queryParam("FID_INPUT_DATE_2", endStr)
+                        .queryParam("FID_PERIOD_DIV_CODE", "D")
+                        .queryParam("FID_ORG_ADJ_PRC", "1")
                         .build())
                 .header("authorization", "Bearer " + token)
                 .header("appkey", appKey)
                 .header("appsecret", appSecret)
-                .header("tr_id", "FHKST03010100") // 국내주식기간별시세
+                .header("tr_id", "FHKST03010100")
                 .retrieve()
                 .bodyToMono(KisChartResponse.class)
                 .block();
@@ -162,9 +171,31 @@ public class KisApiClient {
     }
 
     /**
-     * 1분봉 조회 (Mock 유지 - 데이터 수집용)
+     * 1분봉 차트 조회 (실시간)
+     * KIS API: 주식당일분봉조회
+     * TR_ID: FHKST03010200
      */
-    public void getMinuteCandles(String symbol, LocalDateTime from, LocalDateTime to) {
-        // ... (이전과 동일)
+    public KisMinuteChartResponse getMinuteChart(String symbol) {
+        String token = getAccessToken();
+        String time = java.time.format.DateTimeFormatter.ofPattern("HHmmss").format(LocalDateTime.now());
+
+        log.debug("Fetching minute chart for {} at {}", symbol, time);
+
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice")
+                        .queryParam("FID_ETC_CLS_CODE", "")
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                        .queryParam("FID_INPUT_ISCD", symbol)
+                        .queryParam("FID_INPUT_HOUR_1", time) // 조회 기준 시간 (현재시간)
+                        .queryParam("FID_PW_DATA_INCU_YN", "Y") // 과거 데이터 포함
+                        .build())
+                .header("authorization", "Bearer " + token)
+                .header("appkey", appKey)
+                .header("appsecret", appSecret)
+                .header("tr_id", "FHKST03010200") // 주식당일분봉조회
+                .retrieve()
+                .bodyToMono(KisMinuteChartResponse.class)
+                .block();
     }
 }

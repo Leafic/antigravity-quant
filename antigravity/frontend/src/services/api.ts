@@ -23,8 +23,8 @@ export const api = {
     },
 
     // Candles
-    getCandles: async (symbol: string): Promise<any[]> => {
-        const res = await fetch(`${API_BASE_URL}/candles?symbol=${symbol}`);
+    getCandles: async (symbol: string, type: string = 'daily'): Promise<any[]> => {
+        const res = await fetch(`${API_BASE_URL}/candles?symbol=${symbol}&type=${type}`);
         return res.json();
     },
 

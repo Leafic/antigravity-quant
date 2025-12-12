@@ -11,6 +11,7 @@ function App() {
     const [holdings, setHoldings] = useState<any[]>([]);
     const [targets, setTargets] = useState<any[]>([]);
     const [selectedSymbol, setSelectedSymbol] = useState('006620'); // DongKoo Bio Default
+    const [timeframe, setTimeframe] = useState('daily');
 
     useEffect(() => {
         fetchData();
@@ -19,8 +20,8 @@ function App() {
     }, []);
 
     useEffect(() => {
-        fetchChartData(selectedSymbol);
-    }, [selectedSymbol]);
+        fetchChartData(selectedSymbol, timeframe);
+    }, [selectedSymbol, timeframe]);
 
     const fetchData = async () => {
         try {
@@ -40,9 +41,9 @@ function App() {
         }
     };
 
-    const fetchChartData = async (symbol: string) => {
+    const fetchChartData = async (symbol: string, tf: string) => {
         try {
-            const data = await api.getCandles(symbol);
+            const data = await api.getCandles(symbol, tf);
             const chartData = data.map((c: any) => ({
                 time: c.time.split('T')[0],
                 open: c.open,
@@ -77,7 +78,7 @@ function App() {
             <header className="mb-8 flex items-center justify-between border-b border-slate-700 pb-4">
                 <div>
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-                        AntiGravity
+                        주식매매 시스템
                     </h1>
                     <p className="text-slate-400 text-sm">하이브리드 주식 트레이딩 시스템</p>
                 </div>
@@ -85,8 +86,8 @@ function App() {
                     <button
                         onClick={toggleKillSwitch}
                         className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-all ${systemActive === false
-                                ? 'bg-red-500/10 border-red-500 text-red-500 hover:bg-red-500/20'
-                                : 'bg-emerald-500/10 border-emerald-500 text-emerald-500 hover:bg-emerald-500/20'
+                            ? 'bg-red-500/10 border-red-500 text-red-500 hover:bg-red-500/20'
+                            : 'bg-emerald-500/10 border-emerald-500 text-emerald-500 hover:bg-emerald-500/20'
                             }`}
                     >
                         <Power size={20} />
@@ -152,7 +153,7 @@ function App() {
                             <span className="text-xs text-slate-500">실시간 (15분 지연)</span>
                         </div>
                         {candles.length > 0 ? (
-                            <StockChart data={candles} />
+                            <StockChart data={candles} onTimeframeChange={setTimeframe} />
                         ) : (
                             <div className="h-[300px] flex items-center justify-center text-slate-500 bg-slate-900/50 rounded-lg">
                                 데이터 로딩중... (또는 데이터 없음)

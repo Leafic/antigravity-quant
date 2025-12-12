@@ -40,11 +40,12 @@ public class KillSwitchService {
     /**
      * 킬 스위치 상태 변경
      */
-    public void setSystemActive(boolean active) {
+    public String setActive(boolean active) {
         redisTemplate.opsForValue().set(KILL_SWITCH_KEY, String.valueOf(active));
         String status = active ? "ACTIVE (Trading Resumed)" : "INACTIVE (Trading Halted)";
         log.warn("⚠️ Global Kill Switch status changed to: {}", status);
         notificationService.sendSystemAlert("Global Kill Switch status changed to: " + status);
+        return status;
     }
 
     /**
@@ -53,7 +54,7 @@ public class KillSwitchService {
     public void checkDailyLossLimit(BigDecimal dailyProfitLossPercent) {
         if (dailyProfitLossPercent.compareTo(MAX_LOSS_PERCENT) < 0) {
             log.error("🚨 Daily Loss Limit Triggered! P/L: {}%", dailyProfitLossPercent);
-            setSystemActive(false); // Kill Switch Trigger
+            setActive(false); // Kill Switch Trigger
             notificationService.sendSystemAlert("🚨 Daily Loss Limit Triggered! System Halted via Kill Switch.");
         }
     }

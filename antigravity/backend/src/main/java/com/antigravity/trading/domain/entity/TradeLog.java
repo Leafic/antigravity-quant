@@ -52,6 +52,26 @@ public class TradeLog {
     @Column(length = 255)
     private String reason; // 매매 사유
 
+    @Column(length = 50)
+    private String signalCode; // BREAKOUT_MA20_VOL, etc.
+
+    // Snapshot of indicators at entry
+    @Column(precision = 19, scale = 4)
+    private BigDecimal ma20;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal rsi14;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal volRatio;
+
+    // Performance metrics (updated later)
+    @Column(precision = 19, scale = 4)
+    private BigDecimal mfe; // Max Favorable Excursion
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal mae; // Max Adverse Excursion
+
     @CreatedDate
     private LocalDateTime timestamp;
 
