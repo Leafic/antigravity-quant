@@ -37,6 +37,7 @@ public class TelegramNotificationService implements NotificationService {
                             .path("/bot" + botToken + "/sendMessage")
                             .queryParam("chat_id", chatId)
                             .queryParam("text", message)
+                            .queryParam("parse_mode", "Markdown")
                             .build())
                     .retrieve()
                     .bodyToMono(String.class)
@@ -56,7 +57,7 @@ public class TelegramNotificationService implements NotificationService {
     @Override
     public void sendTradeNotification(String type, String symbol, String price, String quantity, String reason) {
         String msg = String.format("""
-                🚀 **Trade Executed** (%s)
+                🚀 *Trade Executed* (%s)
                 Symbol: %s
                 Price: %s
                 Qty: %s
