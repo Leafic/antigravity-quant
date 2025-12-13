@@ -1,62 +1,118 @@
 # Project AntiGravity: 초고가용성 하이브리드 주식 트레이딩 시스템
 
-**AntiGravity**는 유니버스 기반의 하이브리드 아키텍처를 적용한 알고리즘 트레이딩 시스템 프로토타입입니다. Spring Boot와 React를 사용하여 프로덕션 레벨의 안정성을 확보하고, Global Kill Switch 등 강력한 리스크 관리 기능을 탑재했습니다.
+**AntiGravity**는 한국투자증권(KIS) Open API를 기반으로 한 알고리즘 트레이딩 시스템입니다. Spring Boot와 React를 사용하여 프로덕션 레벨의 안정성을 확보하고, 실시간 시세 처리와 백테스팅, 리스크 관리 기능을 통합적으로 제공합니다.
 
-## 아키텍처 개요
+## 🚀 주요 기능 (Key Features)
 
-1.  **Phase 1: 유니버스 스크리닝 (야간 배치)**
-    -   매일 밤 거래량과 시가총액 상위 종목을 스캔하여 다음 날 거래할 핵심 타겟 50개를 선정합니다.
-2.  **Phase 2: 데이터 아카이빙 (야간 배치)**
-    -   선정된 타겟의 과거 1분봉 데이터를 수집하고, 20일/60일 이동평균선(MA)을 미리 계산하여 DB에 저장합니다.
-3.  **Phase 3: 실시간 트레이딩 (장중)**
-    -   WebSocket(향후 연동 예정)을 통해 실시간 시세를 수신하고, 사전 계산된 지표와 비교하여 매매를 수행합니다.
-4.  **안전 장치 (Safety First)**:
-    -   **Global Kill Switch**: Redis 플래그를 통해 즉시 시스템의 모든 매매를 중단시킬 수 있습니다.
-    -   **Daily Loss Limit**: 당일 손실이 -5%를 초과하면 자동으로 Kill Switch가 발동되어 시스템이 정지됩니다.
+### 1. 코어 트레이딩 엔진
+- **KIS API 연동 (한국투자증권)**:
+  - **REST API**: 계좌 잔고 조회(`Balance`), 일/분봉 차트 데이터 수집(`Daily/Minute Chart`), 주식 주문(`Order`).
+  - **WebSocket (실시간)**: 실시간 체결가(`H0STCNT0`) 수신 및 즉각적인 신호 처리.
+- **전략 (Trading Strategy)**:
+  - **TrendMomentumV1**: 추세추종 및 모멘텀 전략.
+    - **Trend**: 현재가가 20일 이동평균선(MA20) 위에 위치.
+    - **Volume**: 거래량이 20일 평균 거래량의 80% 이상 발생.
+    - **Breakout**: 전일 고가 돌파 시 매수 신호 발생.
+- **주문 관리 (Order Execution)**:
+  - 매수/매도 주문 실행 및 체결 내역 DB 로깅 (`TradeLog`).
+  - 시뮬레이션 모드 지원 (실제 계좌 연동 전 테스트).
 
-## 기술 스택 (Tech Stack)
--   **Backend**: Java 17, Spring Boot 3.2, Spring Data JPA, Redis
--   **Frontend**: React, TypeScript, Vite, Tailwind CSS, Lightweight Charts
--   **Infrastructure**: Docker, Docker Compose, PostgreSQL, Redis
+### 2. 리스크 관리 (Risk Management)
+- **Global Kill Switch**:
+  - Redis를 활용한 글로벌 제어 플래그.
+  - 대시보드에서 클릭 한 번으로 모든 자동 매매 프로세스 즉시 중단.
+- **Daily Loss Limit (일일 손실 제한)**:
+  - 당일 손실금액이 설정된 한도(-5%)를 초과하면 자동으로 Kill Switch가 발동되어 추가 손실 방지.
 
-## 시작하기 (Getting Started)
+### 3. 백테스팅 (Backtesting)
+- **전략 시뮬레이터**:
+  - `TrendMomentumStrategy` 로직을 과거 데이터에 대입하여 성과 검증.
+  - 수익률(Win Rate), 총 손익(Total PnL) 자동 계산.
+  - 프론트엔드 대시보드를 통해 날짜 및 종목별 백테스트 실행 가능.
 
-### 필수 요구사항
--   Docker & Docker Compose
--   (로컬 개발 시) Java 17+, Node.js 20+
+### 4. 대시보드 (Frontend Dashboard)
+- **실시간 모니터링**:
+  - **내 계좌 현황**: 총 평가금액, 주문 가능 예수금 실시간 표시.
+  - **보유 종목(Portfolio)**: 현재 보유 종목 리스트 및 실시간 등락률/평가손익 확인.
+  - **시장 시세**: 관심 종목의 일/분봉 차트 시각화 (`TradingView Lightweight Charts`).
+  - **거래 기록 (Trade History)**: 실시간 체결된 매매 로그 리스트 (사유, 신호 포함).
+- **제어 패널**: 시스템 ON/OFF 스위치, 백테스트 패널.
 
-### 빠른 실행 (권장)
-프로젝트 루트에서 다음 명령어 하나로 전체 시스템을 실행할 수 있습니다.
+### 5. 알림 시스템 (Notification)
+- **Telegram Bot 연동**:
+  - **매매 알림**: 매수/매도 주문 체결 시 즉시 메시지 발송 (종목, 가격, 수량).
+  - **시스템 알림**: Kill Switch 발동 등 중요 시스템 이벤트 수신.
+  - **테스트 기능**: API를 통해 강제 알림 발송 테스트 가능.
+
+## 🛠 기술 스택 (Tech Stack)
+
+| 영역 | 기술 |
+|---|---|
+| **Backend** | Java 17, Spring Boot 3.2, Spring Data JPA, WebFlux |
+| **Database** | PostgreSQL 15, Redis (Cache/State) |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Recharts / Lightweight Charts |
+| **Infra** | Docker, Docker Compose, Nginx |
+| **External** | Korea Investment Securities (KIS) Open API |
+
+## 🏗 아키텍처 (Architecture)
+
+```mermaid
+graph TD
+    Client[React Dashboard] -->|REST API| Nginx
+    Nginx -->|Reverse Proxy| Backend[Spring Boot]
+    Backend -->|Data Persistence| DB[(PostgreSQL)]
+    Backend -->|State/Cache| Redis[(Redis)]
+    Backend -->|REST/WebSocket| KIS[KIS Open API]
+    Backend -->|Alerts| Telegram[Telegram Bot]
+    
+    subgraph "Core Services"
+        Strategy[Strategy Engine]
+        Trader[RealTime Trader]
+        Order[Order Service]
+        Risk[Risk Management]
+    end
+    
+    Backend --- Strategy
+    Backend --- Trader
+    Backend --- Order
+    Backend --- Risk
+```
+
+## 🏁 시작하기 (Getting Started)
+
+### 사전 준비사항
+1. **Docker & Docker Compose** 설치.
+2. **KIS API 계좌 및 키** 발급 (AppKey, AppSecret).
+3. `backend/src/main/resources/application.yml` 설정 (API Key 입력).
+
+### 실행 방법
+프로젝트 루트에서 다음 명령어를 실행하면, Backend, Frontend, DB, Redis가 모두 구동됩니다.
+
 ```bash
 docker-compose up --build
 ```
-실행 후 **http://localhost:5173**에 접속하여 대시보드를 확인하세요.
 
-### 수동 설치 및 실행
+### 접속 주소
+- **대시보드**: [http://localhost](http://localhost)
+- **API 문서/테스트**: [http://localhost/api/notifications/test](http://localhost/api/notifications/test) (예시)
 
-#### Backend
-```bash
-cd antigravity/backend
-./gradlew build
-java -jar build/libs/antigravity-backend-0.0.1-SNAPSHOT.jar
+## 📁 프로젝트 구조
+
 ```
-*참고: 로컬에 Postgres와 Redis가 실행 중이어야 합니다.*
-
-#### Frontend
-```bash
-cd antigravity/frontend
-npm install
-npm run dev
+antigravity/
+├── backend/            # Spring Boot Application
+│   ├── src/main/java/com/antigravity/trading/
+│   │   ├── controller/     # API Endpoints
+│   │   ├── domain/         # Entities, DTOs, Strategy Logic
+│   │   ├── infrastructure/ # External API Clients (KIS, Telegram)
+│   │   └── service/        # Business Logic (Backtest, Order, Risk)
+│   └── Dockerfile
+├── frontend/           # React Application
+│   ├── src/components/     # UI Components (Chart, Panel, TradeLog)
+│   └── Dockerfile
+├── docker-compose.yml  # Container Orchestration
+└── README.md           # Documentation
 ```
 
-## 대시보드 주요 기능
--   **Kill Switch 제어**: 시스템 전체의 매매 기능을 ON/OFF 할 수 있습니다.
--   **백테스트 시뮬레이터**: 과거 데이터 기반으로 전략을 테스트하고 수익률을 확인할 수 있습니다. (예: 종목코드 005930, 기간 2023-01-01 ~ 2023-12-31)
--   **인터랙티브 차트**: 선정된 종목의 시세 차트와 보조 지표를 시각적으로 확인합니다.
--   **실시간 상태 모니터링**: 현재 활성 타겟 목록과 당일 손익(P/L)을 실시간으로 보여줍니다.
-
-## API 레퍼런스
--   `POST /api/backtest`: 백테스트 시뮬레이션 실행
--   `GET /api/candles`: 과거 캔들 데이터 조회
--   `POST /api/test/screen`: Phase 1 (스크리닝) 강제 트리거
--   `POST /api/system/kill-switch`: Kill Switch 상태 변경
+---
+**AntiGravity System v1.0.0**
