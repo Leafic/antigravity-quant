@@ -15,8 +15,11 @@ public class NotificationController {
     @PostMapping("/test")
     public ResponseEntity<String> sendTestMessage(@RequestBody TestMessageRequest request) {
         if ("TRADE".equalsIgnoreCase(request.type)) {
+            String symbol = request.symbol != null ? request.symbol : "005930";
+            String reason = request.reason != null ? request.reason : "테스트 매수 신호 발생";
+
             notificationService.sendTradeNotification(
-                    "BUY", "005930", "70000", "10", "TEST_SIGNAL");
+                    "BUY", symbol, "34,500", "10", reason);
             return ResponseEntity.ok("Trade test message sent.");
         } else {
             notificationService.sendSystemAlert(request.message != null ? request.message : "Test System Alert");
@@ -24,6 +27,6 @@ public class NotificationController {
         }
     }
 
-    public record TestMessageRequest(String type, String message) {
+    public record TestMessageRequest(String type, String message, String symbol, String reason) {
     }
 }

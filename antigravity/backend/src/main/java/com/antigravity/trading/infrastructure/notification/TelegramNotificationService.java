@@ -56,15 +56,21 @@ public class TelegramNotificationService implements NotificationService {
 
     @Override
     public void sendTradeNotification(String type, String symbol, String price, String quantity, String reason) {
+        String emoji = type.equalsIgnoreCase("BUY") ? "🚀" : "📉";
+        String typeKr = type.equalsIgnoreCase("BUY") ? "체결 (매수)" : "체결 (매도)";
+
         String msg = String.format("""
-                🚀 *Trade Executed* (%s)
-                Symbol: %s
-                Price: %s
-                Qty: %s
-                Reason: %s
+                %s *%s 알림*
+
+                📋 종목: *%s*
+                💰 가격: *%s KRW*
+                🔢 수량: *%s주*
+                🛠 전략: *TrendMomentumV1*
+                📝 사유: *%s*
+
                 ------------------------
-                AntiGravity System
-                """, type, symbol, price, quantity, reason);
+                ⚡ AntiGravity System
+                """, emoji, typeKr, symbol, price, quantity, reason);
         sendMessage(msg);
     }
 }

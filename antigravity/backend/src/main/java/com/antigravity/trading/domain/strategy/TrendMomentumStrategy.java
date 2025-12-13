@@ -35,7 +35,8 @@ public class TrendMomentumStrategy implements TradingStrategy {
         BigDecimal currentPrice = today.getClose(); // For daily candle, close is current price
         // If Price is above MA20 (Trend)
         if (currentPrice.compareTo(ma20) <= 0) {
-            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD).reason("Below MA20")
+            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD)
+                    .reason("비추세 구간 (MA20 하회)")
                     .build();
         }
 
@@ -47,13 +48,15 @@ public class TrendMomentumStrategy implements TradingStrategy {
         // Loose check: Current Volume > AvgVol * 0.5 (if early day) or 1.0.
         // Let's use 0.8 as threshold for prototype.
         if (currentVol.compareTo(avgVol20.multiply(new BigDecimal("0.8"))) <= 0) {
-            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD).reason("Low Volume")
+            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD)
+                    .reason("모멘텀 약함 (거래량 20일 평균 미달)")
                     .build();
         }
 
         // 4. Breakout (Today High > Yesterday High)
         if (today.getHigh().compareTo(yesterday.getHigh()) <= 0) {
-            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD).reason("No Breakout")
+            return StrategySignal.builder().symbol(symbol).type(StrategySignal.SignalType.HOLD)
+                    .reason("돌파 실패 (전일 고가 미달)")
                     .build();
         }
 
@@ -62,7 +65,7 @@ public class TrendMomentumStrategy implements TradingStrategy {
                 .symbol(symbol)
                 .type(StrategySignal.SignalType.BUY)
                 .price(currentPrice)
-                .reason("BREAKOUT_MA20_VOL")
+                .reason("강력 매수 (MA20 상향 돌파 + 전일 고가 갱신 + 거래량 급증)")
                 .build();
     }
 
