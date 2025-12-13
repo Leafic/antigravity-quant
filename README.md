@@ -141,6 +141,28 @@ npm run dev
   ```
 - **백테스트 실행**: 대시보드의 'Backtest Panel'에서 'Run Backtest' 버튼 클릭.
 
+## 🧪 백테스트 시나리오 (API Examples)
+`LOOSE` 모드를 사용하여 검증 가능한 트레이딩 시그널을 생성할 수 있습니다. 아래 명령어를 터미널에 붙여넣어 테스트하세요.
+
+### 1. Loose Mode + 1 Month (단일 종목)
+```bash
+curl -X POST "http://localhost:8080/api/backtest?symbol=005930&start=2024-01-01T09:00:00&end=2024-02-01T15:30:00&mode=LOOSE"
+```
+
+### 2. Loose Mode + 3 Months (단일 종목)
+```bash
+curl -X POST "http://localhost:8080/api/backtest?symbol=005930&start=2024-01-01T09:00:00&end=2024-04-01T15:30:00&mode=LOOSE"
+```
+
+### 3. Loose Mode + 1 Month (유니버스 Top 5)
+```bash
+# 주요 우량주 5종목 연속 테스트
+for sym in 005930 000660 035420 005380 000270; do
+  echo "Testing $sym..."
+  curl -s -X POST "http://localhost:8080/api/backtest?symbol=$sym&start=2024-01-01T09:00:00&end=2024-02-01T15:30:00&mode=LOOSE" | jq '.totalTrades, .finalBalance'
+done
+```
+
 ## 📁 프로젝트 구조
 
 ```

@@ -15,11 +15,38 @@ import java.time.LocalTime;
 @Component
 public class TrendMomentumScalpV1 implements StrategyEngine {
 
-    // Configurable Parameters
-    private static final LocalTime ENTRY_START_TIME = LocalTime.of(9, 10);
-    private static final LocalTime ENTRY_END_TIME = LocalTime.of(14, 50);
-    private static final LocalTime EOD_EXIT_TIME = LocalTime.of(15, 15);
+    // Configurable Parameters (Defaults are STRICT)
+    @lombok.Data
+    @lombok.Builder
+    private static class Config {
+        private LocalTime entryStartTime;
+        private LocalTime entryEndTime;
+        private BigDecimal volumeRatioThreshold;
+        private BigDecimal breakoutBuffer;
+        private boolean strictMaSlope;
 
+        public static Config strict() {
+            return Config.builder()
+                    .entryStartTime(LocalTime.of(9, 10))
+                    .entryEndTime(LocalTime.of(14, 50))
+                    .volumeRatioThreshold(new BigDecimal("2.0")) // 200%
+                    .breakoutBuffer(new BigDecimal("1.002")) // 0.2%
+                    .strictMaSlope(true)
+                    .build();
+        }
+
+        public static Config loose() {
+            return Config.builder()
+                    .entryStartTime(LocalTime.of(9, 5))
+                    .entryEndTime(LocalTime.of(15, 0))
+                    .volumeRatioThreshold(new BigDecimal("1.2")) // 120%
+                    .breakoutBuffer(new BigDecimal("1.0005")) // 0.05%
+                    .strictMaSlope(false)
+                    .build();
+        }
+    }
+
+    private static final LocalTime EOD_EXIT_TIME = LocalTime.of(15, 15);
     private static final BigDecimal SPREAD_THRESHOLD = new BigDecimal("0.005"); // 0.5%
     private static final BigDecimal STOP_LOSS_PCT = new BigDecimal("0.012"); // 1.2%
     private static final BigDecimal TAKE_PROFIT_PCT = new BigDecimal("0.020"); // 2.0%
@@ -33,6 +60,10 @@ public class TrendMomentumScalpV1 implements StrategyEngine {
     @Override
     public Signal analyze(MarketEvent event, StrategyContext context) {
         LocalTime now = event.getTimestamp().toLocalTime();
+
+        // 0. Determine Mode
+        String mode = (String) context.getExtraData().getOrDefault("mode", "STRICT");
+        Config config = "LOOSE".equalsIgnoreCase(mode) ? Config.loose() : Config.strict();
 
         // 1. EOD Force Exit
         if (now.isAfter(EOD_EXIT_TIME) && context.isHasPosition()) {
@@ -51,45 +82,57 @@ public class TrendMomentumScalpV1 implements StrategyEngine {
 
         // 3. Entry Logic
         // Time Filter
-        if (now.isBefore(ENTRY_START_TIME) || now.isAfter(ENTRY_END_TIME)) {
-            return Signal.none();
+        if (now.isBefore(config.getEntryStartTime()) || now.isAfter(config.getEntryEndTime())) {
+            return rejection("REJECT_TIME");
         }
 
-        // Spread Filter
+        // Spread Filter (Strict only, or apply generally. User asked to disable in
+        // Backtest if needed, implemented as Strict check for now)
         if (event.getSpreadPct() != null && event.getSpreadPct().compareTo(SPREAD_THRESHOLD) > 0) {
-            return Signal.none(); // Spread too high
+            return rejection("REJECT_SPREAD");
         }
 
         // Main Trend Logic (Price > MA20)
         BigDecimal currentPrice = event.getCurrentPrice();
         if (event.getMa20() != null && currentPrice.compareTo(event.getMa20()) <= 0) {
-            return Signal.none(); // Below MA20
+            return rejection("REJECT_MA20_TREND");
         }
 
-        if (!event.isMa20Rising()) {
-            return Signal.none(); // MA20 not rising
+        if (config.isStrictMaSlope() && !event.isMa20Rising()) {
+            return rejection("REJECT_MA20_SLOPE");
         }
 
         // Breakout Logic
         BigDecimal breakoutLevel = event.getBreakoutPrice();
         if (breakoutLevel != null) {
-            // 1) Price > Breakout * 1.002
-            BigDecimal target = breakoutLevel.multiply(new BigDecimal("1.002"));
+            // Price > Breakout * Buffer
+            BigDecimal target = breakoutLevel.multiply(config.getBreakoutBuffer());
 
             if (currentPrice.compareTo(target) >= 0) {
                 // Volume Surge Check
-                if (event.getVolumeRatio() >= 0.5) {
+                if (event.getVolumeRatio() >= config.getVolumeRatioThreshold().doubleValue()) {
                     return Signal.builder()
                             .type(Signal.Type.BUY)
                             .strategyName(getName())
                             .reasonCode("BREAKOUT_VOL")
-                            .reasonDetail("Breakout > " + breakoutLevel + " with Vol Ratio " + event.getVolumeRatio())
+                            .reasonDetail("Breakout > " + breakoutLevel + " with Vol Rate " + event.getVolumeRatio())
                             .build();
+                } else {
+                    return rejection("REJECT_VOLUME");
                 }
+            } else {
+                return rejection("REJECT_PRICE_BELOW_TARGET");
             }
         }
 
-        return Signal.none();
+        return rejection("REJECT_NO_SETUP");
+    }
+
+    private Signal rejection(String code) {
+        return Signal.builder()
+                .type(Signal.Type.NONE)
+                .reasonCode(code)
+                .build();
     }
 
     private Signal checkExitRules(MarketEvent event, StrategyContext context) {
@@ -134,6 +177,6 @@ public class TrendMomentumScalpV1 implements StrategyEngine {
             }
         }
 
-        return Signal.none();
+        return Signal.builder().type(Signal.Type.HOLD).build();
     }
 }

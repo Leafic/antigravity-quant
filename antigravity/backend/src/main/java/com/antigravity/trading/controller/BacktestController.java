@@ -19,8 +19,9 @@ public class BacktestController {
     public ResponseEntity<BacktestService.BacktestResult> runBacktest(
             @RequestParam String symbol,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(defaultValue = "STRICT") String mode) {
 
-        return ResponseEntity.ok(backtestService.runBacktest(symbol, start, end));
+        return ResponseEntity.ok(backtestService.runBacktest(symbol, start, end, mode));
     }
 }

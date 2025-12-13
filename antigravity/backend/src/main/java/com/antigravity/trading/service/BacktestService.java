@@ -34,7 +34,12 @@ public class BacktestService {
     private final DecisionLogRepository decisionLogRepository;
 
     public BacktestResult runBacktest(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
-        log.info("Starting backtest for {} from {} to {}", symbol, startDate, endDate);
+        return runBacktest(symbol, startDate, endDate, "STRICT");
+    }
+
+    public BacktestResult runBacktest(String symbol, LocalDateTime startDate, LocalDateTime endDate,
+            String strategyMode) {
+        log.info("Starting backtest for {} from {} to {} (Mode: {})", symbol, startDate, endDate, strategyMode);
 
         // 1. Fetch Data
         var response = kisApiClient.getDailyChart(symbol, startDate, endDate);
@@ -53,29 +58,32 @@ public class BacktestService {
                 .startedAt(LocalDateTime.now())
                 .status("RUNNING")
                 .paramsJson(
-                        "{\"symbol\":\"" + symbol + "\", \"start\":\"" + startDate + "\", \"end\":\"" + endDate + "\"}")
+                        "{\"symbol\":\"" + symbol + "\", \"start\":\"" + startDate + "\", \"end\":\"" + endDate
+                                + "\", \"mode\":\"" + strategyMode + "\"}")
                 .build();
         backtestRunRepository.save(run);
 
         // 4. Run Simulation
-        BacktestResult result = simulateStrategy(run.getId(), symbol, candles);
+        BacktestResult result = simulateStrategy(run.getId(), symbol, candles, strategyMode);
 
         run.setEndedAt(LocalDateTime.now());
         run.setStatus("COMPLETED");
-        run.setSummaryJson("{\"finalBalance\":" + result.getFinalBalance() + "}");
+        run.setSummaryJson(
+                "{\"finalBalance\":" + result.getFinalBalance() + ", \"trades\":" + result.getTotalTrades() + "}");
         backtestRunRepository.save(run);
 
         return result;
     }
 
     private BacktestResult simulateStrategy(Long runId, String symbol,
-            List<com.antigravity.trading.domain.dto.CandleDto> candles) {
+            List<com.antigravity.trading.domain.dto.CandleDto> candles, String strategyMode) {
         BigDecimal balance = new BigDecimal("10000000");
         BigDecimal holdingQty = BigDecimal.ZERO;
         BigDecimal entryPrice = BigDecimal.ZERO;
         int tradeCount = 0;
 
         List<TradeRecord> trades = new ArrayList<>();
+        java.util.Map<String, Integer> stats = new HashMap<>();
 
         List<BigDecimal> prices = new ArrayList<>();
         List<BigDecimal> volumes = new ArrayList<>();
@@ -135,6 +143,9 @@ public class BacktestService {
             }
 
             // Build Context
+            java.util.Map<String, Object> extra = new HashMap<>();
+            extra.put("mode", strategyMode);
+
             StrategyContext context = StrategyContext.builder()
                     .symbol(symbol)
                     .hasPosition(holdingQty.compareTo(BigDecimal.ZERO) > 0)
@@ -142,7 +153,7 @@ public class BacktestService {
                     .quantity(holdingQty.longValue())
                     .availableCash(balance)
                     .highWaterMark(curr.getHigh())
-                    .extraData(new HashMap<>())
+                    .extraData(extra)
                     .build();
 
             // Build MarketEvent
@@ -150,10 +161,9 @@ public class BacktestService {
             MarketEvent event = MarketEvent.builder()
                     .symbol(symbol)
                     .timestamp(dt)
-                    .currentPrice(curr.getClose()) // Strategy checks this for general trend, but for Breakout, usage
-                                                   // depends on implementation.
+                    .currentPrice(curr.getClose())
                     .open(curr.getOpen())
-                    .high(curr.getHigh()) // Strategy might check this?
+                    .high(curr.getHigh())
                     .low(curr.getLow())
                     .close(curr.getClose())
                     .volume(curr.getVolume().longValue())
@@ -165,31 +175,6 @@ public class BacktestService {
                     .build();
 
             // Execute Engine
-            // PROBLEM: Strategy 'TrendMomentumScalpV1' uses event.getCurrentPrice() for
-            // Breakout Check.
-            // "if (currentPrice.compareTo(target) >= 0)"
-            // If currentPrice is Close, and target is High*1.002, this never passes.
-            // We must temporarily spoof Current Price as High for the purpose of checking
-            // Breakout trigger during the day?
-            // Or better: Update Strategy to check High if it's a "backtest mode"? No,
-            // strategy should be stateless/agnostic.
-            // Strategy assumes "CurrentPrice" is the price *right now*.
-            // In a daily backtest, "Right Now" covers the entire day.
-            // If High > Breakout, we *would have* entered.
-            // So we should verify if High > Breakout.
-            // But Strategy.analyze() returns Signal based on "event.currentPrice".
-            // If we pass Close, it fails.
-            // Use High as CurrentPrice?
-            // If we use High, MA20 check (Price > MA20) might pass even if Close < MA20?
-            // Conservative: Check Close > MA20.
-            // Aggressive: Check High > MA20?
-            // Let's create a specialized event for Strategy Analysis that tries to see if
-            // ANY trade happened?
-            // Simple Fix: Pass HIGH as currentPrice to see if meaningful signal is
-            // generated.
-            // Note: This approximates "Best Case" entry.
-            // We will use CLOSE for the context update (marking to market).
-
             MarketEvent analysisEvent = event.toBuilder()
                     .currentPrice(curr.getHigh()) // Use High to test breakout potential
                     .build();
@@ -211,6 +196,12 @@ public class BacktestService {
                         .inputsJson(inputDesc)
                         .build();
                 decisionLogRepository.save(decisionLog);
+            } else {
+                // Collect Rejection Stats
+                String reason = signal.getReasonCode();
+                if (reason != null) {
+                    stats.put(reason, stats.getOrDefault(reason, 0) + 1);
+                }
             }
 
             // Execution Logic (Simulated)
@@ -240,21 +231,6 @@ public class BacktestService {
                             .build());
                 }
             } else if (signal.getType() == Signal.Type.SELL) {
-                // Close Position
-                // Exit at Close? Or TakeProfit level?
-                // Strategy returns SELL if TP/SL hit *based on current price*.
-                // Since we passed High, it might trigger TP.
-                // If we passed High, we might falsely trigger TP if only wick hit it? Valid.
-                // What about SL? We should check LOW for SL.
-                // This requires multiple checks per candle:
-                // 1. Check Low for SL.
-                // 2. Check High for TP.
-                // 3. Check High for Entry.
-                // This is complex "Intraday Simulation".
-                // For now, simple logic: Use Close for Exit. Use High for Entry.
-                // If signal was BUY (from High), we processed it.
-                // If signal was SELL (from High), we process it.
-
                 if (holdingQty.compareTo(BigDecimal.ZERO) > 0) {
                     BigDecimal amount = holdingQty.multiply(curr.getClose());
 
@@ -304,6 +280,7 @@ public class BacktestService {
                 .totalTrades(trades.size())
                 .trades(trades)
                 .candles(candles)
+                .rejectionStats(stats)
                 .build();
     }
 
@@ -339,6 +316,7 @@ public class BacktestService {
         private int totalTrades;
         private List<TradeRecord> trades;
         private List<com.antigravity.trading.domain.dto.CandleDto> candles;
+        private java.util.Map<String, Integer> rejectionStats;
     }
 
     @Getter
@@ -349,6 +327,6 @@ public class BacktestService {
         private BigDecimal price;
         private BigDecimal quantity;
         private String reason;
-        private BigDecimal pnlPercent; // For logic
+        private BigDecimal pnlPercent;
     }
 }
