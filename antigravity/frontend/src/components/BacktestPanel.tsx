@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
-import { Play, Loader2 } from 'lucide-react';
+import { Play, Loader2, Settings } from 'lucide-react';
 import { StockChart } from './StockChart';
+import { StrategySelect } from './StrategySelect';
+import { StockSearch } from './StockSearch';
 
 export const BacktestPanel: React.FC = () => {
     const [symbol, setSymbol] = useState('005930');
     const [start, setStart] = useState('2023-01-01T00:00:00');
     const [end, setEnd] = useState('2023-12-31T23:59:59');
+    const [strategyId, setStrategyId] = useState('');
+    const [params, setParams] = useState('{}');
     const [result, setResult] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [showParams, setShowParams] = useState(false);
 
     const handleRun = async () => {
         setLoading(true);
@@ -17,7 +22,7 @@ export const BacktestPanel: React.FC = () => {
             const fmtStart = start.length === 16 ? start + ':00' : start;
             const fmtEnd = end.length === 16 ? end + ':59' : end;
 
-            const data = await api.runBacktest(symbol, fmtStart, fmtEnd);
+            const data = await api.runBacktest(symbol, fmtStart, fmtEnd, strategyId, params);
             setResult(data);
         } catch (error) {
             console.error(error);
@@ -27,6 +32,11 @@ export const BacktestPanel: React.FC = () => {
         }
     };
 
+    const handleStrategySelect = (id: string, defaultParams: string) => {
+        setStrategyId(id);
+        setParams(defaultParams);
+    };
+
     return (
         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
             <h2 className="text-xl font-semibold mb-4 text-slate-300 flex items-center gap-2">
@@ -34,16 +44,23 @@ export const BacktestPanel: React.FC = () => {
                 백테스트 시뮬레이터 (유니버스 시나리오 매매)
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                    <label className="block text-xs text-slate-400 mb-1">종목코드 (Symbol)</label>
-                    <input
-                        type="text"
-                        value={symbol}
-                        onChange={(e) => setSymbol(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <StockSearch selectedCode={symbol} onSelect={setSymbol} />
+                <StrategySelect selectedId={strategyId} onSelect={handleStrategySelect} />
+            </div>
+
+            {showParams && (
+                <div className="mb-4">
+                    <label className="block text-xs text-slate-400 mb-1">전략 파라미터 (JSON)</label>
+                    <textarea
+                        value={params}
+                        onChange={(e) => setParams(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs font-mono h-20"
                     />
                 </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label className="block text-xs text-slate-400 mb-1">시작일 (Start)</label>
                     <input
@@ -64,13 +81,22 @@ export const BacktestPanel: React.FC = () => {
                 </div>
             </div>
 
-            <button
-                onClick={handleRun}
-                disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-                {loading ? <Loader2 className="animate-spin" size={18} /> : '백테스트 실행'}
-            </button>
+            <div className="flex gap-2">
+                <button
+                    onClick={() => setShowParams(!showParams)}
+                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+                    title="파라미터 설정"
+                >
+                    <Settings size={18} />
+                </button>
+                <button
+                    onClick={handleRun}
+                    disabled={loading}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                    {loading ? <Loader2 className="animate-spin" size={18} /> : '백테스트 실행'}
+                </button>
+            </div>
 
             {result && (
                 <div className="mt-6 mb-6 h-[320px] bg-slate-900/50 rounded-lg border border-slate-700 p-4">
@@ -124,7 +150,7 @@ export const BacktestPanel: React.FC = () => {
                                     <th className="px-3 py-2 text-right">가격</th>
                                     <th className="px-3 py-2 text-right">수량</th>
                                     <th className="px-3 py-2 text-center">수익률</th>
-                                    <th className="px-3 py-2">이유</th>
+                                    <th className="px-3 py-2">이유 (Reason)</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-700">
@@ -147,7 +173,7 @@ export const BacktestPanel: React.FC = () => {
                                         <td className={`px-3 py-2 text-center font-bold ${trade.pnlPercent > 0 ? 'text-red-400' : trade.pnlPercent < 0 ? 'text-blue-400' : 'text-slate-500'}`}>
                                             {trade.pnlPercent ? trade.pnlPercent.toFixed(2) + '%' : '-'}
                                         </td>
-                                        <td className="px-3 py-2 text-slate-400 truncate max-w-[150px]" title={trade.reason}>
+                                        <td className="px-3 py-2 text-slate-400" title={trade.reason}>
                                             {trade.reason}
                                         </td>
                                     </tr>

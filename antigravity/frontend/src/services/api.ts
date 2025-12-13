@@ -15,10 +15,25 @@ export const api = {
     },
 
     // Backtest
-    runBacktest: async (symbol: string, start: string, end: string): Promise<any> => {
-        const res = await fetch(`${API_BASE_URL}/backtest?symbol=${symbol}&start=${start}&end=${end}`, {
-            method: 'POST',
+    async getStrategies() {
+        const res = await fetch('/api/strategies');
+        return res.json();
+    },
+
+    async searchStocks(query: string) {
+        const res = await fetch(`/api/stocks/search?query=${encodeURIComponent(query)}`);
+        return res.json();
+    },
+
+    async runBacktest(symbol: string, start: string, end: string, strategyId?: string, params?: string) {
+        const paramsObj = new URLSearchParams({ symbol, start, end });
+        if (strategyId) paramsObj.append('strategyId', strategyId);
+        if (params) paramsObj.append('params', params);
+
+        const res = await fetch(`/api/backtest?${paramsObj.toString()}`, {
+            method: 'POST'
         });
+        if (!res.ok) throw new Error('Backtest failed');
         return res.json();
     },
 

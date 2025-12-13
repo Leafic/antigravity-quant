@@ -53,8 +53,23 @@ public class TrendMomentumScalpV1 implements StrategyEngine {
     private static final BigDecimal TRAILING_STOP_PCT = new BigDecimal("0.008"); // 0.8%
 
     @Override
+    public String getId() {
+        return "S1";
+    }
+
+    @Override
     public String getName() {
-        return "TrendMomentumScalpV1";
+        return "1) 돌파+거래량 (TrendMomentum)";
+    }
+
+    @Override
+    public String getDescription() {
+        return "전일 고가 돌파 및 거래량 증가 시 진입하는 단타 전략";
+    }
+
+    @Override
+    public String getDefaultParamsJson() {
+        return "{\"mode\":\"STRICT\", \"desc\":\"Strict Mode\"}";
     }
 
     @Override

@@ -8,11 +8,13 @@
 - **KIS API 연동 (한국투자증권)**:
   - **REST API**: 계좌 잔고 조회(`Balance`), 일/분봉 차트 데이터 수집(`Daily/Minute Chart`), 주식 주문(`Order`).
   - **WebSocket (실시간)**: 실시간 체결가(`H0STCNT0`) 수신 및 즉각적인 신호 처리.
-- **전략 (Trading Strategy)**:
-  - **TrendMomentumV1**: 추세추종 및 모멘텀 전략.
-    - **Trend**: 현재가가 20일 이동평균선(MA20) 위에 위치.
-    - **Volume**: 거래량이 20일 평균 거래량의 80% 이상 발생.
-    - **Breakout**: 전일 고가 돌파 시 매수 신호 발생.
+- **멀티 전략 시스템 (Multi-Strategy Engine)**:
+  - **Strategy Registry**: 다양한 트레이딩 전략을 플러그인 형태로 확장 가능.
+  - **탑재 전략**:
+    1. **S1_TrendMomentum (Trend)**: 추세추종 및 돌파 매매 (MA20 + 거래량).
+    2. **S2_RsiScalp (Counter-Trend)**: RSI 30/70 기반 역추세 스캘핑.
+    3. **S3_SupportResistance (Price Action)**: 당일 지지/저항 라인 기반 매매.
+    4. **S4_Ensemble (Hybrid)**: 추세, 모멘텀, 기술적 지표를 종합한 앙상블 모델.
 - **주문 관리 (Order Execution)**:
   - 매수/매도 주문 실행 및 체결 내역 DB 로깅 (`TradeLog`).
   - 시뮬레이션 모드 지원 (실제 계좌 연동 전 테스트).
@@ -35,8 +37,11 @@
   - **내 계좌 현황**: 총 평가금액, 주문 가능 예수금 실시간 표시.
   - **보유 종목(Portfolio)**: 현재 보유 종목 리스트 및 실시간 등락률/평가손익 확인.
   - **시장 시세**: 관심 종목의 일/분봉 차트 시각화 (`TradingView Lightweight Charts`).
-  - **거래 기록 (Trade History)**: 실시간 체결된 매매 로그 리스트 (사유, 신호 포함).
-- **제어 패널**: 시스템 ON/OFF 스위치, 백테스트 패널.
+  - **거래 기록 (Trade History)**: 실시간 체결된 매매 로그 리스트 (상세 로직별 사유 포함).
+- **Control Panel**:
+  - **종목 검색**: 코스피/코스닥 전 종목 검색 및 자동완성.
+  - **전략 선택**: 드롭다운 메뉴를 통해 백테스트/실전매매 전략 선택 및 파라미터(JSON) 튜닝.
+  - **제어**: 글로벌 킬스위치(Kill Switch) 및 백테스트 실행.
 
 ### 5. 알림 시스템 (Notification)
 - **Telegram Bot 연동**:

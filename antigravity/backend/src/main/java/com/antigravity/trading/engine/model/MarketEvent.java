@@ -29,6 +29,7 @@ public class MarketEvent {
     private final BigDecimal breakoutPrice; // Target Level
     private final boolean isMa20Rising; // Slope check
     private final double volumeRatio; // Current Vol / Avg Vol
+    private final Double rsi; // RSI (14)
 
     public boolean isValid() {
         return currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) > 0;

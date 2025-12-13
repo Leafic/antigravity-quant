@@ -16,7 +16,22 @@ public interface StrategyEngine {
     Signal analyze(MarketEvent event, StrategyContext context);
 
     /**
+     * @return Unique strategy ID (e.g. trend_momentum_scalp_v1)
+     */
+    String getId();
+
+    /**
      * @return Unique strategy name (e.g. TrendMomentumScalpV1)
      */
     String getName();
+
+    /**
+     * @return A brief description of the strategy's logic.
+     */
+    String getDescription();
+
+    /**
+     * @return Default parameters for the strategy in JSON format.
+     */
+    String getDefaultParamsJson();
 }

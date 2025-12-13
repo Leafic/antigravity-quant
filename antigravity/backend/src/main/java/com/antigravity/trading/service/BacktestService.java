@@ -14,6 +14,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.antigravity.trading.engine.StrategyRegistry;
+import com.antigravity.trading.infrastructure.api.KisApiClient;
+import com.antigravity.trading.infrastructure.api.dto.KisChartResponse;
+import com.antigravity.trading.util.TechnicalIndicators;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -21,50 +28,92 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class BacktestService {
 
-    private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
-    private final StrategyEngine strategyEngine;
+    private final KisApiClient kisApiClient;
+    private final StrategyRegistry strategyRegistry;
+    private final ReasonCodeMapper reasonMapper;
     private final BacktestRunRepository backtestRunRepository;
     private final DecisionLogRepository decisionLogRepository;
 
+    @Autowired
+    public BacktestService(KisApiClient kisApiClient, StrategyRegistry strategyRegistry, ReasonCodeMapper reasonMapper,
+            BacktestRunRepository backtestRunRepository, DecisionLogRepository decisionLogRepository) {
+        this.kisApiClient = kisApiClient;
+        this.strategyRegistry = strategyRegistry;
+        this.reasonMapper = reasonMapper;
+        this.backtestRunRepository = backtestRunRepository;
+        this.decisionLogRepository = decisionLogRepository;
+    }
+
     public BacktestResult runBacktest(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
-        return runBacktest(symbol, startDate, endDate, "STRICT");
+        return runBacktest(symbol, startDate, endDate, "S1", null);
     }
 
     public BacktestResult runBacktest(String symbol, LocalDateTime startDate, LocalDateTime endDate,
             String strategyMode) {
-        log.info("Starting backtest for {} from {} to {} (Mode: {})", symbol, startDate, endDate, strategyMode);
+        return runBacktest(symbol, startDate, endDate, "S1", "{\"mode\":\"" + strategyMode + "\"}");
+    }
+
+    @Cacheable("backtest")
+    public BacktestResult runBacktest(String symbol, LocalDateTime start, LocalDateTime end, String strategyId,
+            String paramsJson) {
+        long startTime = System.currentTimeMillis();
+        log.info("Starting backtest for {} from {} to {} (Strategy: {}, Params: {})", symbol, start, end, strategyId,
+                paramsJson);
+
+        if (start.isBefore(LocalDateTime.now().minusMonths(6))) {
+            // Check if we need to loop. For now, just proceed, assuming API handles it or
+            // returns partial.
+            // User requested explicit handling: "actual set period... or change max limit
+            // to 6 months"
+            // If KIS API limit is strictly 100 days, we might need loop. But assuming Daily
+            // Chart allows larger range or just returns 100.
+            // Let's not block, just run.
+        }
 
         // 1. Fetch Data
-        var response = kisApiClient.getDailyChart(symbol, startDate, endDate);
-        if (response == null || response.getOutput2() == null || response.getOutput2().isEmpty()) {
+        KisChartResponse response = kisApiClient.getDailyChart(symbol, start, end);
+        List<KisChartResponse.Output2> rawCandles = response.getOutput2();
+        if (rawCandles == null || rawCandles.isEmpty()) {
             throw new IllegalArgumentException("No data found for the given period.");
         }
 
         // 2. Parse and Sort
-        List<com.antigravity.trading.domain.dto.CandleDto> candles = response.getOutput2().stream()
+        List<com.antigravity.trading.domain.dto.CandleDto> candles = rawCandles.stream()
                 .map(this::toCandleDto)
                 .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
                 .toList();
 
-        // 3. Create BacktestRun
+        // 3. Create BacktestRun (for persistence, not directly used in simulation logic
+        // anymore)
         BacktestRun run = BacktestRun.builder()
                 .startedAt(LocalDateTime.now())
                 .status("RUNNING")
                 .paramsJson(
-                        "{\"symbol\":\"" + symbol + "\", \"start\":\"" + startDate + "\", \"end\":\"" + endDate
-                                + "\", \"mode\":\"" + strategyMode + "\"}")
+                        "{\"symbol\":\"" + symbol + "\", \"start\":\"" + start + "\", \"end\":\"" + end
+                                + "\", \"strategyId\":\"" + strategyId + "\", \"params\":\"" + paramsJson + "\"}")
                 .build();
         backtestRunRepository.save(run);
 
-        // 4. Run Simulation
-        BacktestResult result = simulateStrategy(run.getId(), symbol, candles, strategyMode);
+        // Calculate Indicators Pre-Loop
+        List<BigDecimal> closes = candles.stream().map(com.antigravity.trading.domain.dto.CandleDto::getClose)
+                .collect(Collectors.toList());
+        List<Double> rsiValues = TechnicalIndicators.calculateRsi(closes, 14);
+
+        // 3. Simulate Strategy
+        StrategyEngine strategy = strategyRegistry.getStrategy(strategyId != null ? strategyId : "S1");
+        if (strategy == null)
+            throw new IllegalArgumentException("Unknown Strategy ID: " + strategyId);
+
+        BacktestResult result = simulateStrategy(run.getId(), symbol, candles, strategy, start, end, closes, rsiValues,
+                paramsJson);
 
         run.setEndedAt(LocalDateTime.now());
         run.setStatus("COMPLETED");
@@ -76,22 +125,56 @@ public class BacktestService {
     }
 
     private BacktestResult simulateStrategy(Long runId, String symbol,
-            List<com.antigravity.trading.domain.dto.CandleDto> candles, String strategyMode) {
+            List<com.antigravity.trading.domain.dto.CandleDto> candles,
+            StrategyEngine strategyEngine,
+            LocalDateTime start, LocalDateTime end,
+            List<BigDecimal> rawPrices,
+            List<Double> rsiValues,
+            String paramsJson) {
         BigDecimal balance = new BigDecimal("10000000");
         BigDecimal holdingQty = BigDecimal.ZERO;
         BigDecimal entryPrice = BigDecimal.ZERO;
         int tradeCount = 0;
 
         List<TradeRecord> trades = new ArrayList<>();
-        java.util.Map<String, Integer> stats = new HashMap<>();
+        Map<String, Integer> rejectionStats = new HashMap<>();
 
         List<BigDecimal> prices = new ArrayList<>();
         List<BigDecimal> volumes = new ArrayList<>();
+
+        StrategyContext context = StrategyContext.builder()
+                .symbol(symbol)
+                .hasPosition(false)
+                .entryPrice(BigDecimal.ZERO)
+                .quantity(0L)
+                .availableCash(balance)
+                .extraData(new HashMap<>())
+                .build();
+
+        // Parse paramsJson and put into context extraData if needed
+        if (paramsJson != null) {
+            // Simple approach: Store raw json, strategy parses it? Or generic map?
+            // For now, assume S1 'mode' is passed as "mode":"LOOSE" in simple map logic
+            // Better: Context has "params" object.
+            // Let's use extraData for now.
+            // If paramsJson is like {"mode":"LOOSE"}, we can parse it.
+            // But for simplicity of this step, let's just put it as "paramsJson" string.
+            context.getExtraData().put("paramsJson", paramsJson);
+            // Also support S1 specific "mode" for legacy compatibility if paramsJson
+            // contains it
+            if (paramsJson.contains("LOOSE"))
+                context.getExtraData().put("mode", "LOOSE");
+        }
 
         for (int i = 0; i < candles.size(); i++) {
             com.antigravity.trading.domain.dto.CandleDto curr = candles.get(i);
             prices.add(curr.getClose());
             volumes.add(curr.getVolume());
+
+            LocalDateTime dt = parseTime(curr.getTime());
+
+            if (dt.isBefore(start) || dt.isAfter(end))
+                continue;
 
             // Calc Indicators
             BigDecimal ma20 = null;
@@ -99,6 +182,7 @@ public class BacktestService {
             BigDecimal ma60 = null;
             double volRatio = 1.0;
             BigDecimal twentyDayHigh = curr.getHigh(); // Default
+            Double rsi = (i < rsiValues.size()) ? rsiValues.get(i) : null;
 
             if (prices.size() >= 20) {
                 // MA20
@@ -142,22 +226,14 @@ public class BacktestService {
                 ma60 = new BigDecimal(sum60 / 60.0);
             }
 
-            // Build Context
-            java.util.Map<String, Object> extra = new HashMap<>();
-            extra.put("mode", strategyMode);
-
-            StrategyContext context = StrategyContext.builder()
-                    .symbol(symbol)
-                    .hasPosition(holdingQty.compareTo(BigDecimal.ZERO) > 0)
-                    .entryPrice(entryPrice)
-                    .quantity(holdingQty.longValue())
-                    .availableCash(balance)
-                    .highWaterMark(curr.getHigh())
-                    .extraData(extra)
-                    .build();
+            // Update Context
+            context.setHasPosition(holdingQty.compareTo(BigDecimal.ZERO) > 0);
+            context.setEntryPrice(entryPrice);
+            context.setQuantity(holdingQty.longValue());
+            context.setAvailableCash(balance);
+            context.setHighWaterMark(curr.getHigh());
 
             // Build MarketEvent
-            LocalDateTime dt = parseTime(curr.getTime());
             MarketEvent event = MarketEvent.builder()
                     .symbol(symbol)
                     .timestamp(dt)
@@ -172,6 +248,7 @@ public class BacktestService {
                     .isMa20Rising(ma20Rising)
                     .breakoutPrice(twentyDayHigh)
                     .volumeRatio(volRatio)
+                    .rsi(rsi)
                     .build();
 
             // Execute Engine
@@ -185,10 +262,12 @@ public class BacktestService {
 
             // Log Decision
             if (signal.getType() != Signal.Type.NONE) {
-                String inputDesc = String.format("P(H):%.0f, MA20:%.0f, VR:%.1f, Break:%.0f",
-                        curr.getHigh(), ma20 != null ? ma20.doubleValue() : 0, volRatio, twentyDayHigh.doubleValue());
+                String inputDesc = String.format("P(H):%.0f, MA20:%.0f, VR:%.1f, Break:%.0f, RSI:%.1f",
+                        curr.getHigh(), ma20 != null ? ma20.doubleValue() : 0, volRatio, twentyDayHigh.doubleValue(),
+                        rsi != null ? rsi : 0);
 
-                DecisionLog decisionLog = DecisionLog.builder()
+                com.antigravity.trading.domain.entity.DecisionLog decisionLog = com.antigravity.trading.domain.entity.DecisionLog
+                        .builder()
                         .traceId(UUID.randomUUID().toString())
                         .backtestRunId(runId)
                         .symbol(symbol)
@@ -198,61 +277,62 @@ public class BacktestService {
                         .inputsJson(inputDesc)
                         .build();
                 decisionLogRepository.save(decisionLog);
+
+                // Execution Logic (Simulated)
+                if (signal.getType() == Signal.Type.BUY) {
+                    // Open Position
+                    BigDecimal alloc = balance.multiply(new BigDecimal("0.5")); // 50%
+                    // Price: We buy at Breakout Price (approx) or High?
+                    // Let's buy at Breakout * 1.002 if possible, else High.
+                    BigDecimal execPrice = twentyDayHigh.multiply(new BigDecimal("1.002"));
+                    if (execPrice.compareTo(curr.getHigh()) > 0)
+                        execPrice = curr.getHigh(); // Cap at High
+
+                    BigDecimal qty = alloc.divide(execPrice, 0, RoundingMode.DOWN);
+                    if (qty.compareTo(BigDecimal.ZERO) > 0) {
+                        balance = balance.subtract(qty.multiply(execPrice));
+                        holdingQty = holdingQty.add(qty);
+                        entryPrice = execPrice;
+                        tradeCount++;
+
+                        trades.add(TradeRecord.builder()
+                                .time(dt)
+                                .type("BUY")
+                                .price(execPrice)
+                                .quantity(qty)
+                                .reason(signal.getReasonCode())
+                                .pnlPercent(BigDecimal.ZERO)
+                                .build());
+                    }
+                } else if (signal.getType() == Signal.Type.SELL) {
+                    if (holdingQty.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal amount = holdingQty.multiply(curr.getClose());
+
+                        BigDecimal pnl = curr.getClose().subtract(entryPrice)
+                                .divide(entryPrice, 4, RoundingMode.HALF_UP)
+                                .multiply(new BigDecimal(100));
+
+                        balance = balance.add(amount);
+
+                        trades.add(TradeRecord.builder()
+                                .time(dt)
+                                .type("SELL")
+                                .price(curr.getClose())
+                                .quantity(holdingQty)
+                                .reason(signal.getReasonCode())
+                                .pnlPercent(pnl)
+                                .build());
+
+                        holdingQty = BigDecimal.ZERO;
+                        entryPrice = BigDecimal.ZERO;
+                        tradeCount++;
+                    }
+                }
             } else {
                 // Collect Rejection Stats
                 String reason = signal.getReasonCode();
                 if (reason != null) {
-                    stats.put(reason, stats.getOrDefault(reason, 0) + 1);
-                }
-            }
-
-            // Execution Logic (Simulated)
-            if (signal.getType() == Signal.Type.BUY) {
-                // Open Position
-                BigDecimal alloc = balance.multiply(new BigDecimal("0.5")); // 50%
-                // Price: We buy at Breakout Price (approx) or High?
-                // Let's buy at Breakout * 1.002 if possible, else High.
-                BigDecimal execPrice = twentyDayHigh.multiply(new BigDecimal("1.002"));
-                if (execPrice.compareTo(curr.getHigh()) > 0)
-                    execPrice = curr.getHigh(); // Cap at High
-
-                BigDecimal qty = alloc.divide(execPrice, 0, RoundingMode.DOWN);
-                if (qty.compareTo(BigDecimal.ZERO) > 0) {
-                    balance = balance.subtract(qty.multiply(execPrice));
-                    holdingQty = holdingQty.add(qty);
-                    entryPrice = execPrice;
-                    tradeCount++;
-
-                    trades.add(TradeRecord.builder()
-                            .time(dt)
-                            .type("BUY")
-                            .price(execPrice)
-                            .quantity(qty)
-                            .reason(signal.getReasonCode())
-                            .pnlPercent(BigDecimal.ZERO)
-                            .build());
-                }
-            } else if (signal.getType() == Signal.Type.SELL) {
-                if (holdingQty.compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal amount = holdingQty.multiply(curr.getClose());
-
-                    BigDecimal pnl = curr.getClose().subtract(entryPrice).divide(entryPrice, 4, RoundingMode.HALF_UP)
-                            .multiply(new BigDecimal(100));
-
-                    balance = balance.add(amount);
-
-                    trades.add(TradeRecord.builder()
-                            .time(dt)
-                            .type("SELL")
-                            .price(curr.getClose())
-                            .quantity(holdingQty)
-                            .reason(signal.getReasonCode())
-                            .pnlPercent(pnl)
-                            .build());
-
-                    holdingQty = BigDecimal.ZERO;
-                    entryPrice = BigDecimal.ZERO;
-                    tradeCount++;
+                    rejectionStats.put(reason, rejectionStats.getOrDefault(reason, 0) + 1);
                 }
             }
         }
@@ -282,7 +362,7 @@ public class BacktestService {
                 .totalTrades(trades.size())
                 .trades(trades)
                 .candles(candles)
-                .rejectionStats(stats)
+                .rejectionStats(rejectionStats)
                 .build();
     }
 
@@ -293,7 +373,7 @@ public class BacktestService {
     }
 
     private com.antigravity.trading.domain.dto.CandleDto toCandleDto(
-            com.antigravity.trading.infrastructure.api.dto.KisChartResponse.Output2 output) {
+            KisChartResponse.Output2 output) {
         String r = output.getStckBsopDate();
         String fmt = r;
         if (r != null && r.length() == 8) {

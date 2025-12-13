@@ -168,29 +168,71 @@ public class KisApiClient {
     }
 
     public KisChartResponse getDailyChart(String symbol, LocalDateTime start, LocalDateTime end) {
-        String token = getAccessToken();
-        String startStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(start);
-        String endStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(end);
+        KisChartResponse finalResponse = new KisChartResponse();
+        finalResponse.setOutput2(new java.util.ArrayList<>());
 
-        log.debug("Fetching daily chart for {} from {} to {}", symbol, startStr, endStr);
+        LocalDateTime currentEnd = end;
+        String targetStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(start);
 
-        return webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice")
-                        .queryParam("FID_COND_MRKT_DIV_CODE", "J")
-                        .queryParam("FID_INPUT_ISCD", symbol)
-                        .queryParam("FID_INPUT_DATE_1", startStr)
-                        .queryParam("FID_INPUT_DATE_2", endStr)
-                        .queryParam("FID_PERIOD_DIV_CODE", "D")
-                        .queryParam("FID_ORG_ADJ_PRC", "1")
-                        .build())
-                .header("authorization", "Bearer " + token)
-                .header("appkey", appKey)
-                .header("appsecret", appSecret)
-                .header("tr_id", "FHKST03010100")
-                .retrieve()
-                .bodyToMono(KisChartResponse.class)
-                .block();
+        while (currentEnd.isAfter(start) || currentEnd.isEqual(start)) {
+            String startStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(start);
+            String endStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(currentEnd);
+
+            log.debug("Fetching daily chart for {} from {} to {}", symbol, startStr, endStr);
+
+            String token = getAccessToken();
+            KisChartResponse response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice")
+                            .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                            .queryParam("FID_INPUT_ISCD", symbol)
+                            .queryParam("FID_INPUT_DATE_1", startStr)
+                            .queryParam("FID_INPUT_DATE_2", endStr)
+                            .queryParam("FID_PERIOD_DIV_CODE", "D")
+                            .queryParam("FID_ORG_ADJ_PRC", "1")
+                            .build())
+                    .header("authorization", "Bearer " + token)
+                    .header("appkey", appKey)
+                    .header("appsecret", appSecret)
+                    .header("tr_id", "FHKST03010100")
+                    .retrieve()
+                    .bodyToMono(KisChartResponse.class)
+                    .block();
+
+            if (response != null && response.getOutput2() != null && !response.getOutput2().isEmpty()) {
+                finalResponse.getOutput2().addAll(response.getOutput2());
+                if (finalResponse.getOutput1() == null)
+                    finalResponse.setOutput1(response.getOutput1()); // Set generic info once
+
+                // Check the oldest date in this batch
+                String oldestDateStr = response.getOutput2().get(response.getOutput2().size() - 1).getStckBsopDate();
+                if (oldestDateStr.compareTo(targetStartStr) <= 0) {
+                    break; // Reached start date
+                }
+
+                // Prepare for next batch (day before oldest date)
+                LocalDateTime oldestDate = LocalDateTime.parse(oldestDateStr + "000000",
+                        java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+                currentEnd = oldestDate.minusDays(1);
+            } else {
+                break; // No more data
+            }
+
+            try {
+                Thread.sleep(100); // Rate limit protection
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        // Remove duplicates and sort if needed (Data comes desc, we are appending
+        // chunks, so it might be partially ordered)
+        // KIS returns desc (recent first). Batch 1: recent..old. Batch 2:
+        // older..oldest.
+        // So simple append keeps desc order.
+
+        return finalResponse;
     }
 
     /**
