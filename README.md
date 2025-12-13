@@ -113,7 +113,7 @@ docker-compose up --build
 docker-compose up -d --build
 ```
 
-- **대시보드 접속**: [http://localhost](http://localhost)
+- **대시보드 접속**: [http://localhost:5173](http://localhost:5173)
 - **API 서버**: [http://localhost:8080](http://localhost:8080)
 
 ### 실행 방법 2: 개별 실행 (개발용)
