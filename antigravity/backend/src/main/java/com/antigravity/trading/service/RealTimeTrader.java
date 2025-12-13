@@ -112,6 +112,23 @@ public class RealTimeTrader {
         log.debug("Tick: {} {}", symbol, currentPrice);
 
         // TODO: Full Strategy Execution
-        // strategy.analyze(...)
+        // Example Logic (Skeleton):
+        /*
+         * List<CandleDto> candles = ...; // Fetch history
+         * StrategySignal signal = tradingStrategy.analyze(symbol, candles);
+         * 
+         * if (signal.getType() == StrategySignal.SignalType.BUY) {
+         * // 1. Send Signal to Group
+         * notificationService.sendSignalNotification(symbol, "BUY",
+         * signal.getReason());
+         * 
+         * // 2. Execute Order (Sends Trade Notification to Private)
+         * orderService.buy(symbol, currentPrice, new BigDecimal("10"),
+         * signal.getReason());
+         * }
+         */
+
+        // For demonstration, we just log.
+        log.debug("Processing Tick for {}: {}", symbol, currentPrice);
     }
 }
