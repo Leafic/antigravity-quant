@@ -82,19 +82,64 @@ graph TD
 
 ### 사전 준비사항
 1. **Docker & Docker Compose** 설치.
+   - [Docker Desktop 다운로드](https://www.docker.com/products/docker-desktop/)
 2. **KIS API 계좌 및 키** 발급 (AppKey, AppSecret).
-3. `backend/src/main/resources/application.yml` 설정 (API Key 입력).
+   - 한국투자증권 Open API 신청 필요.
+   - 모의투자/실전투자 계좌 준비.
+3. **환경 설정 (Application Config)**
+   - `backend/src/main/resources/application.yml` 파일을 열어 다음 정보를 입력하세요.
+     ```yaml
+     kis:
+       app-key: "YOUR_APP_KEY"
+       app-secret: "YOUR_APP_SECRET"
+       account-no: "YOUR_ACCOUNT_NO" # 12345678-01 형식
+       base-url: "https://openapivts.koreainvestment.com:29443" # 모의투자
+       # 실전투자는 "https://openapi.koreainvestment.com:9443"
 
-### 실행 방법
-프로젝트 루트에서 다음 명령어를 실행하면, Backend, Frontend, DB, Redis가 모두 구동됩니다.
+     telegram:
+       bot-token: "8513797541:..."
+       chat-id: "-5091739784" # 그룹 Chat ID
+     ```
+   - *주의: 이 파일은 git에 커밋되지 않도록 주의하세요.*
+
+### 실행 방법 1: 전체 시스템 (Docker Compose 권장)
+프로젝트 루트에서 다음 명령어 하나로 Backend, Frontend, DB, Redis를 한 번에 실행합니다.
 
 ```bash
+# 실행
 docker-compose up --build
+
+# 백그라운드 실행 시
+docker-compose up -d --build
 ```
 
-### 접속 주소
-- **대시보드**: [http://localhost](http://localhost)
-- **API 문서/테스트**: [http://localhost/api/notifications/test](http://localhost/api/notifications/test) (예시)
+- **대시보드 접속**: [http://localhost](http://localhost)
+- **API 서버**: [http://localhost:8080](http://localhost:8080)
+
+### 실행 방법 2: 개별 실행 (개발용)
+
+**Backend (Spring Boot)**:
+```bash
+cd antigravity/backend
+./gradlew build
+java -jar build/libs/antigravity-backend-0.0.1-SNAPSHOT.jar
+# 또는 IDE(IntelliJ)에서 main 실행
+```
+
+**Frontend (React)**:
+```bash
+cd antigravity/frontend
+npm install
+npm run dev
+```
+- Frontend 접속: `http://localhost:5173`
+
+### 주요 기능 테스트
+- **매매 알림 테스트**:
+  ```bash
+  curl -X POST http://localhost/api/notifications/test -H "Content-Type: application/json" -d '{"type":"TRADE"}'
+  ```
+- **백테스트 실행**: 대시보드의 'Backtest Panel'에서 'Run Backtest' 버튼 클릭.
 
 ## 📁 프로젝트 구조
 
