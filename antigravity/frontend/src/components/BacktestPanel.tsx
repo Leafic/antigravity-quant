@@ -31,7 +31,7 @@ export const BacktestPanel: React.FC = () => {
         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
             <h2 className="text-xl font-semibold mb-4 text-slate-300 flex items-center gap-2">
                 <Play size={20} className="text-blue-400" />
-                백테스트 시뮬레이터 (Golden Cross)
+                백테스트 시뮬레이터 (유니버스 시나리오 매매)
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
