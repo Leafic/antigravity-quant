@@ -35,36 +35,83 @@ public class RealTimeTrader {
         loadActiveTargets();
     }
 
+    private final OrderService orderService;
+    private final com.antigravity.trading.domain.strategy.TradingStrategy tradingStrategy;
+    private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
+    private final org.springframework.context.ApplicationContext applicationContext; // For Lazy retrieval of
+                                                                                     // WebsocketClient if needed
+
+    // ... (rest of fields)
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.antigravity.trading.infrastructure.websocket.KisWebSocketClient webSocketClient;
+
+    // ... (init method)
+
     public void loadActiveTargets() {
         List<TargetStock> targets = targetStockRepository.findByIsActiveTrue();
         activeTargets.clear();
         for (TargetStock target : targets) {
             activeTargets.put(target.getSymbol(), target);
-            // TODO: Subscribe to WebSocket for this symbol
+            if (webSocketClient != null) {
+                webSocketClient.subscribe(target.getSymbol());
+            }
         }
-        log.info("Loaded {} active targets into memory.", activeTargets.size());
+        log.info("Loaded {} active targets and subscribed.", activeTargets.size());
     }
 
-    /**
-     * 실시간 가격 수신 시 호출되는 메서드 (WebSocket 핸들러에서 호출 예정)
-     */
+    public void onTick(String payload) {
+        // Payload Format: SYMBOL^TIME^PRICE^... (Delimiter might be ^ or | depending on
+        // msg)
+        // KIS Real Price: "0|H0STCNT0|001|SYMBOL^TIME^PRICE..."
+        // Or if handled by Client splitter, just "SYMBOL^TIME^PRICE..."
+
+        try {
+            String[] parts = payload.split("\\^"); // Using Caret based on KIS docs for body
+            if (parts.length < 3)
+                return;
+
+            String symbol = parts[0];
+            String time = parts[1];
+            java.math.BigDecimal currentPrice = new java.math.BigDecimal(parts[2]);
+            // Volume? Index 13 usually accumulated volume?
+            // Need robust parsing. For prototype, just Price.
+
+            onPriceUpdate(symbol, currentPrice);
+        } catch (Exception e) {
+            log.error("Tick Parsing Error", e); // Verbose in prod
+        }
+    }
+
     public void onPriceUpdate(String symbol, java.math.BigDecimal currentPrice) {
-        if (!killSwitchService.isSystemActive()) {
-            log.warn("Price update blocked by Kill Switch for {}", symbol);
+        if (!killSwitchService.isSystemActive() || !activeTargets.containsKey(symbol)) {
             return;
         }
 
-        if (!activeTargets.containsKey(symbol)) {
-            return; // 관심 종목 아니면 무시
-        }
+        // Fetch History for Context (e.g. Daily Candles)
+        // Performance Note: Fetching API on every tick is too slow.
+        // Should Cache history and update last candle in memory.
+        // For Prototype: Fetch only every N seconds or Use Cache.
+        // Let's Fetch Daily Chart (Limit 1 per minute per symbol? KIS rate limit 20
+        // req/sec).
+        // Strategy needs "Candles".
 
-        // Trading Logic Placeholder
-        // 1. Check Kill Switch (Done above)
-        // 2. Compare Price with MA (from DB or Cache)
-        // 3. Execute Trade
-        log.debug("Price update for {}: {}", symbol, currentPrice);
+        // Optimize: Only analyze if (Time % 60 == 0) or similar?
+        // Or fetch history async.
 
-        // Mock Trade Execution for Demo
-        // notificationService.sendTradeAlert(...);
+        // Logic:
+        // 1. Get History (Sync for now, assume low traffic)
+        // List<CandleDto> history = kisApiClient.getDailyChart(symbol)... -> mapped to
+        // DTO
+        // But KisApiClient returns Response. Need Controller's mapping reasoning or
+        // direct usage.
+        // Let's use KisApiClient result directly and map to DTO manually here.
+
+        // Simplified for Speed: Just log tick for now. Strategy execution requires data
+        // aggregation.
+        log.debug("Tick: {} {}", symbol, currentPrice);
+
+        // TODO: Full Strategy Execution
+        // strategy.analyze(...)
     }
 }

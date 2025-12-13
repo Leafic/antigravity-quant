@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface TradeLogRepository extends JpaRepository<TradeLog, Long> {
     List<TradeLog> findBySymbol(String symbol);
+
+    List<TradeLog> findAllByOrderByTimestampDesc();
 }

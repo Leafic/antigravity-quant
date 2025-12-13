@@ -1,7 +1,7 @@
 package com.antigravity.trading.controller;
 
+import com.antigravity.trading.domain.dto.CandleDto;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -57,42 +57,39 @@ public class CandleController {
         String dateStr = output.getStckBsopDate();
         String formattedDate = dateStr.substring(0, 4) + "-" + dateStr.substring(4, 6) + "-" + dateStr.substring(6, 8);
 
-        return new CandleDto(
-                formattedDate, // treating as string for simple frontend handling
-                new java.math.BigDecimal(output.getStckOprc()),
-                new java.math.BigDecimal(output.getStckHgpr()),
-                new java.math.BigDecimal(output.getStckLwpr()),
-                new java.math.BigDecimal(output.getStckClpr()));
+        return CandleDto.builder()
+                .time(formattedDate)
+                .open(new java.math.BigDecimal(output.getStckOprc()))
+                .high(new java.math.BigDecimal(output.getStckHgpr()))
+                .low(new java.math.BigDecimal(output.getStckLwpr()))
+                .close(new java.math.BigDecimal(output.getStckClpr()))
+                .volume(new java.math.BigDecimal(output.getAcmlVol()))
+                .build();
     }
 
     private CandleDto toMinuteDto(
             com.antigravity.trading.infrastructure.api.dto.KisMinuteChartResponse.Output2 output) {
-        // output.stckBsopTime -> "123000" (HHMMSS)
-        // For minute chart, we might want "YYYY-MM-DD HH:mm:ss" or just time?
-        // Lightweight charts prefers full timestamp or time.
-        // We'll append Today's date because FHKST03010200 is "Intra-day".
-        String timeStr = output.getStckBsopTime();
+        // output.stckBsopTime -> "123000" (HHMMSS) or stckCntgHour
+        // toMinuteDto logic in Step 778 used toDtoMinute from diff.
+        // Step 778 implementation used output.getStckCntgHour()
+
+        String timeStr = output.getStckBsopTime(); // getStckBsopTime for Minute Chart
+
+        // Format for frontend if needed? Frontend uses Lightweight Charts which parses
+        // yyyy-MM-dd or timestamp.
+        // If "123000", convert to "2024-12-13 12:30:00" or just send raw?
+        // App.tsx expects time string.
+        // Let's format it.
         String today = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format(java.time.LocalDate.now());
-        String formattedTime = today + " " + timeStr.substring(0, 2) + ":" + timeStr.substring(2, 4); // + ":" +
-                                                                                                      // timeStr.substring(4,
-                                                                                                      // 6);
+        String formattedTime = today + " " + timeStr.substring(0, 2) + ":" + timeStr.substring(2, 4);
 
-        return new CandleDto(
-                formattedTime,
-                new java.math.BigDecimal(output.getStckOprc()),
-                new java.math.BigDecimal(output.getStckHgpr()),
-                new java.math.BigDecimal(output.getStckLwpr()),
-                new java.math.BigDecimal(output.getStckPrpr()) // Minute chart uses 'prpr' as close
-        );
-    }
-
-    @lombok.Data
-    @lombok.AllArgsConstructor
-    public static class CandleDto {
-        private String time;
-        private java.math.BigDecimal open;
-        private java.math.BigDecimal high;
-        private java.math.BigDecimal low;
-        private java.math.BigDecimal close;
+        return CandleDto.builder()
+                .time(formattedTime) // "2024-12-13 12:30"
+                .open(new java.math.BigDecimal(output.getStckOprc()))
+                .high(new java.math.BigDecimal(output.getStckHgpr()))
+                .low(new java.math.BigDecimal(output.getStckLwpr()))
+                .close(new java.math.BigDecimal(output.getStckPrpr()))
+                .volume(new java.math.BigDecimal(output.getAcmlVol()))
+                .build();
     }
 }

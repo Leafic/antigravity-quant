@@ -3,6 +3,7 @@ import { Power, RefreshCw } from 'lucide-react';
 import { api } from './services/api';
 import { BacktestPanel } from './components/BacktestPanel';
 import { StockChart } from './components/StockChart';
+import { TradeLogPanel } from './components/TradeLogPanel';
 
 function App() {
     const [systemActive, setSystemActive] = useState<boolean | null>(null);
@@ -183,6 +184,11 @@ function App() {
                                 <div className="text-center text-slate-500">활성 타겟이 없습니다.</div>
                             )}
                         </div>
+                    </div>
+
+                    {/* Trade Log Panel */}
+                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                        <TradeLogPanel />
                     </div>
                 </div>
 

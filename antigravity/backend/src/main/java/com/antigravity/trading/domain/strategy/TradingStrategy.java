@@ -1,10 +1,11 @@
 package com.antigravity.trading.domain.strategy;
 
 import java.math.BigDecimal;
+import com.antigravity.trading.domain.dto.CandleDto;
+import java.util.List;
 
 public interface TradingStrategy {
     String getName();
 
-    StrategySignal analyze(String symbol,
-            java.util.List<com.antigravity.trading.controller.CandleController.CandleDto> candles); // Simplified DTO
+    StrategySignal analyze(String symbol, List<CandleDto> candles);
 }

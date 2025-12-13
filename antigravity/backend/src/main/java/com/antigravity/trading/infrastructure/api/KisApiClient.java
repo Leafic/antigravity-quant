@@ -87,6 +87,37 @@ public class KisApiClient {
     }
 
     /**
+     * WebSocket 접속용 Approval Key 발급
+     */
+    public String getApprovalKey() {
+        log.info("Fetching WebSocket Approval Key...");
+        // POST /oauth2/Approval
+        Map<String, String> body = new HashMap<>();
+        body.put("grant_type", "client_credentials");
+        body.put("appkey", appKey);
+        body.put("secretkey", appSecret);
+
+        try {
+            String response = webClient.post()
+                    .uri("/oauth2/Approval")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            // Response: { "approval_key": "..." }
+            if (response != null && response.contains("approval_key")) {
+                return new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).get("approval_key")
+                        .asText();
+            }
+        } catch (Exception e) {
+            log.error("Failed to get Approval Key", e);
+        }
+        return null;
+    }
+
+    /**
      * 주식 잔고 조회 (Full Response)
      */
     public KisBalanceResponse getAccountBalance() {
@@ -197,5 +228,45 @@ public class KisApiClient {
                 .retrieve()
                 .bodyToMono(KisMinuteChartResponse.class)
                 .block();
+    }
+
+    /**
+     * 주식 주문 (매수/매도)
+     * type: "BUY" or "SELL"
+     */
+    public String placeOrder(String symbol, String type, String price, Integer quantity) {
+        String token = getAccessToken();
+        String trId = "BUY".equals(type) ? "VTTC0802U" : "VTTC0801U"; // Simulation Buy/Sell. Real: TTTC0802U/TTTC0801U
+
+        // TODO: Switch TR_ID based on config (Real vs Simulation). Hardcoded to Sim for
+        // prototype phase.
+
+        Map<String, String> body = new HashMap<>();
+        body.put("CANO", accountNo.substring(0, 8));
+        body.put("ACNT_PRDT_CD", "01");
+        body.put("PDNO", symbol);
+        body.put("ORD_DVSN", "00"); // 00: Limit (지정가), 01: Market (시장가)
+        body.put("ORD_QTY", String.valueOf(quantity));
+        body.put("ORD_UNPR", price); // Price (0 for Market)
+
+        log.info("Placing {} Order for {} (Qty: {}, Price: {})", type, symbol, quantity, price);
+
+        try {
+            String response = webClient.post()
+                    .uri("/uapi/domestic-stock/v1/trading/order-cash")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("authorization", "Bearer " + token)
+                    .header("appkey", appKey)
+                    .header("appsecret", appSecret)
+                    .header("tr_id", trId)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+            return response;
+        } catch (Exception e) {
+            log.error("Order Failed", e);
+            throw new RuntimeException("Order Execution Failed", e);
+        }
     }
 }
