@@ -177,6 +177,8 @@ public class BacktestService {
             // Execute Engine
             MarketEvent analysisEvent = event.toBuilder()
                     .currentPrice(curr.getHigh()) // Use High to test breakout potential
+                    .timestamp(dt.withHour(10).withMinute(0)) // Spoof time to 10:00 to bypass Time Filter (since Daily
+                                                              // Candle is 15:30)
                     .build();
 
             Signal signal = strategyEngine.analyze(analysisEvent, context);
