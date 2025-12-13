@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
 import { Play, Loader2 } from 'lucide-react';
+import { StockChart } from './StockChart';
 
 export const BacktestPanel: React.FC = () => {
     const [symbol, setSymbol] = useState('005930');
@@ -72,6 +73,21 @@ export const BacktestPanel: React.FC = () => {
             </button>
 
             {result && (
+                <div className="mt-6 mb-6 h-[320px] bg-slate-900/50 rounded-lg border border-slate-700 p-4">
+                    <h3 className="text-sm font-semibold text-slate-400 mb-2">시각화 (Visualization)</h3>
+                    {/* @ts-ignore */}
+                    <StockChart
+                        data={result.candles}
+                        markers={result.trades?.map((t: any) => ({
+                            time: t.time,
+                            type: t.type,
+                            text: t.reason
+                        }))}
+                    />
+                </div>
+            )}
+
+            {result && (
                 <div className="mt-6 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
                     <div className="grid grid-cols-3 gap-4 text-center">
                         <div>
@@ -92,6 +108,52 @@ export const BacktestPanel: React.FC = () => {
                                 {result.totalTrades}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {result && result.trades && result.trades.length > 0 && (
+                <div className="mt-4">
+                    <h3 className="text-sm font-semibold text-slate-400 mb-2">매매 기록 (Timeline)</h3>
+                    <div className="bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
+                        <table className="w-full text-xs text-left text-slate-300">
+                            <thead className="text-xs uppercase bg-slate-800 text-slate-400">
+                                <tr>
+                                    <th className="px-3 py-2">시간</th>
+                                    <th className="px-3 py-2">유형</th>
+                                    <th className="px-3 py-2 text-right">가격</th>
+                                    <th className="px-3 py-2 text-right">수량</th>
+                                    <th className="px-3 py-2 text-center">수익률</th>
+                                    <th className="px-3 py-2">이유</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                                {result.trades.map((trade: any, idx: number) => (
+                                    <tr key={idx} className="hover:bg-slate-800/50">
+                                        <td className="px-3 py-2 font-mono">
+                                            {new Date(trade.time).toLocaleString('ko-KR', {
+                                                month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                        </td>
+                                        <td className={`px-3 py-2 font-bold ${trade.type === 'BUY' ? 'text-red-400' : 'text-blue-400'}`}>
+                                            {trade.type}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                            {new Intl.NumberFormat('ko-KR').format(trade.price)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                            {trade.quantity}
+                                        </td>
+                                        <td className={`px-3 py-2 text-center font-bold ${trade.pnlPercent > 0 ? 'text-red-400' : trade.pnlPercent < 0 ? 'text-blue-400' : 'text-slate-500'}`}>
+                                            {trade.pnlPercent ? trade.pnlPercent.toFixed(2) + '%' : '-'}
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-400 truncate max-w-[150px]" title={trade.reason}>
+                                            {trade.reason}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}

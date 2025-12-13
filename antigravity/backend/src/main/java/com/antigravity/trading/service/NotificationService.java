@@ -1,7 +1,14 @@
 package com.antigravity.trading.service;
 
 public interface NotificationService {
-    // Legacy support
+    // Unified Engine Support
+    void sendSignalNotification(com.antigravity.trading.engine.model.Signal signal);
+
+    void sendTradeNotification(com.antigravity.trading.domain.entity.TradeLog trade,
+            com.antigravity.trading.engine.model.BalanceSnapshot before,
+            com.antigravity.trading.engine.model.BalanceSnapshot after);
+
+    // Legacy Support (String-based)
     void sendMessage(String message);
 
     void sendSystemAlert(String message);

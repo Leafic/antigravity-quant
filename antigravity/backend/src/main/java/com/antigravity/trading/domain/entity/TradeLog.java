@@ -41,6 +41,12 @@ public class TradeLog {
     @Column(nullable = false)
     private TradeType type; // BUY, SELL
 
+    @Column(length = 50)
+    private String signalReason; // e.g. BREAKOUT_VOL
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal pnlPct; // Realized PnL %
+
     @Column(precision = 19, scale = 4)
     private BigDecimal price;
 

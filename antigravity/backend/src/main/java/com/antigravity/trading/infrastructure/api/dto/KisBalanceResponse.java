@@ -37,6 +37,9 @@ public class KisBalanceResponse {
 
         @JsonProperty("prpr")
         private String prpr; // 현재가
+
+        @JsonProperty("pchs_avg_pric")
+        private String pchsAvgPric; // 매입평균가격
     }
 
     @Data
@@ -52,5 +55,8 @@ public class KisBalanceResponse {
 
         @JsonProperty("tot_evlu_amt")
         private String totEvluAmt; // 총평가금액
+
+        @JsonProperty("ord_psbl_cash")
+        private String ordPsblCash; // 주문가능금액
     }
 }

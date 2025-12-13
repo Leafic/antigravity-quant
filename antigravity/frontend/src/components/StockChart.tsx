@@ -11,6 +11,7 @@ interface StockChartProps {
         areaBottomColor?: string;
     };
     onTimeframeChange?: (tf: string) => void;
+    markers?: { time: string; type: 'BUY' | 'SELL'; text?: string }[];
 }
 
 function calculateSMA(data: { time: any; close: number }[], period: number) {
@@ -103,7 +104,22 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
         if (sma20Ref.current) sma20Ref.current.setData(calculateSMA(formattedData, 20).map(d => ({ ...d, time: d.time as Time })));
         if (sma60Ref.current) sma60Ref.current.setData(calculateSMA(formattedData, 60).map(d => ({ ...d, time: d.time as Time })));
 
-    }, [data]);
+        if (sma60Ref.current) sma60Ref.current.setData(calculateSMA(formattedData, 60).map(d => ({ ...d, time: d.time as Time })));
+
+        // Set Markers
+        if (props.markers && candleSeriesRef.current) {
+            const markers = props.markers.map(m => ({
+                time: m.time.split('T')[0] as Time, // Assuming daily 'yyyy-MM-dd' or similar
+                position: m.type === 'BUY' ? 'belowBar' : 'aboveBar',
+                color: m.type === 'BUY' ? '#ef4444' : '#3b82f6',
+                shape: m.type === 'BUY' ? 'arrowUp' : 'arrowDown',
+                text: m.text || m.type,
+            }));
+            // @ts-ignore
+            candleSeriesRef.current.setMarkers(markers);
+        }
+
+    }, [data, props.markers]);
 
     const handleTfChange = (tf: string) => {
         setTimeframe(tf);
