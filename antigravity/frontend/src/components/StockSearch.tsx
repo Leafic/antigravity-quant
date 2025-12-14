@@ -36,10 +36,15 @@ export const StockSearch: React.FC<Props> = ({ selectedCode, onSelect }) => {
 
     const handleSearch = async (val: string) => {
         setQuery(val);
-        if (val.length >= 2) {
+        if (val.length >= 1) {
             try {
-                const results = await api.searchStocks(val);
-                setSuggestions(results);
+                // StockMaster API 사용
+                const response = await api.getStockMasters({
+                    query: val,
+                    size: 20,
+                    page: 0
+                });
+                setSuggestions(response.content || []);
                 setIsOpen(true);
             } catch (e) {
                 console.error(e);

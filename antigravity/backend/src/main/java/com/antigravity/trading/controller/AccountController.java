@@ -44,10 +44,15 @@ public class AccountController {
 
     @GetMapping("/holdings")
     public ResponseEntity<List<KisBalanceResponse.Output1>> getHoldings() {
-        KisBalanceResponse response = kisApiClient.getAccountBalance();
-        if (response != null && response.getOutput1() != null) {
-            return ResponseEntity.ok(response.getOutput1());
+        try {
+            KisBalanceResponse response = kisApiClient.getAccountBalance();
+            if (response != null && response.getOutput1() != null) {
+                return ResponseEntity.ok(response.getOutput1());
+            }
+            return ResponseEntity.ok(Collections.emptyList());
+        } catch (Exception e) {
+            e.printStackTrace(); // Log error for docker logs
+            return ResponseEntity.ok(Collections.emptyList());
         }
-        return ResponseEntity.ok(Collections.emptyList());
     }
 }

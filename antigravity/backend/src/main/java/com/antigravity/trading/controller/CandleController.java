@@ -1,11 +1,17 @@
 package com.antigravity.trading.controller;
 
 import com.antigravity.trading.domain.dto.CandleDto;
+import com.antigravity.trading.repository.CandleHistoryRepository;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/candles")
@@ -13,6 +19,7 @@ import java.util.List;
 public class CandleController {
 
     private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
+    private final CandleHistoryRepository candleHistoryRepository;
 
     @GetMapping
     public ResponseEntity<List<CandleDto>> getCandles(
@@ -91,5 +98,32 @@ public class CandleController {
                 .close(new java.math.BigDecimal(output.getStckPrpr()))
                 .volume(new java.math.BigDecimal(output.getAcmlVol()))
                 .build();
+    }
+
+    /**
+     * 특정 종목의 데이터 보유 기간 조회
+     * GET /api/candles/data-range?symbol=005930
+     */
+    @GetMapping("/data-range")
+    public ResponseEntity<Map<String, Object>> getDataRange(@RequestParam String symbol) {
+        Map<String, Object> response = new HashMap<>();
+
+        // DB에서 해당 종목의 최소/최대 날짜 조회
+        LocalDateTime minDate = candleHistoryRepository.findMinTimeBySymbol(symbol);
+        LocalDateTime maxDate = candleHistoryRepository.findMaxTimeBySymbol(symbol);
+
+        if (minDate == null || maxDate == null) {
+            response.put("hasData", false);
+            response.put("message", "No data available for symbol: " + symbol);
+            return ResponseEntity.ok(response);
+        }
+
+        response.put("hasData", true);
+        response.put("symbol", symbol);
+        response.put("minDate", minDate.toLocalDate().toString());
+        response.put("maxDate", maxDate.toLocalDate().toString());
+        response.put("totalDays", java.time.temporal.ChronoUnit.DAYS.between(minDate.toLocalDate(), maxDate.toLocalDate()) + 1);
+
+        return ResponseEntity.ok(response);
     }
 }

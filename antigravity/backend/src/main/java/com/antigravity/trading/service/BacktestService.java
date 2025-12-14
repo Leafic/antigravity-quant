@@ -41,15 +41,18 @@ public class BacktestService {
     private final ReasonCodeMapper reasonMapper;
     private final BacktestRunRepository backtestRunRepository;
     private final DecisionLogRepository decisionLogRepository;
+    private final com.antigravity.trading.repository.CandleHistoryRepository candleHistoryRepository;
 
     @Autowired
     public BacktestService(KisApiClient kisApiClient, StrategyRegistry strategyRegistry, ReasonCodeMapper reasonMapper,
-            BacktestRunRepository backtestRunRepository, DecisionLogRepository decisionLogRepository) {
+            BacktestRunRepository backtestRunRepository, DecisionLogRepository decisionLogRepository,
+            com.antigravity.trading.repository.CandleHistoryRepository candleHistoryRepository) {
         this.kisApiClient = kisApiClient;
         this.strategyRegistry = strategyRegistry;
         this.reasonMapper = reasonMapper;
         this.backtestRunRepository = backtestRunRepository;
         this.decisionLogRepository = decisionLogRepository;
+        this.candleHistoryRepository = candleHistoryRepository;
     }
 
     public BacktestResult runBacktest(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
@@ -68,28 +71,8 @@ public class BacktestService {
         log.info("Starting backtest for {} from {} to {} (Strategy: {}, Params: {})", symbol, start, end, strategyId,
                 paramsJson);
 
-        if (start.isBefore(LocalDateTime.now().minusMonths(6))) {
-            // Check if we need to loop. For now, just proceed, assuming API handles it or
-            // returns partial.
-            // User requested explicit handling: "actual set period... or change max limit
-            // to 6 months"
-            // If KIS API limit is strictly 100 days, we might need loop. But assuming Daily
-            // Chart allows larger range or just returns 100.
-            // Let's not block, just run.
-        }
-
-        // 1. Fetch Data
-        KisChartResponse response = kisApiClient.getDailyChart(symbol, start, end);
-        List<KisChartResponse.Output2> rawCandles = response.getOutput2();
-        if (rawCandles == null || rawCandles.isEmpty()) {
-            throw new IllegalArgumentException("No data found for the given period.");
-        }
-
-        // 2. Parse and Sort
-        List<com.antigravity.trading.domain.dto.CandleDto> candles = rawCandles.stream()
-                .map(this::toCandleDto)
-                .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
-                .toList();
+        // 1. Fetch Data - DB 우선, 없으면 API 호출
+        List<com.antigravity.trading.domain.dto.CandleDto> candles = fetchCandleData(symbol, start, end);
 
         // 3. Create BacktestRun (for persistence, not directly used in simulation logic
         // anymore)
@@ -372,7 +355,66 @@ public class BacktestService {
         return LocalDateTime.parse(dateStr + " 15:30:00", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
-    private com.antigravity.trading.domain.dto.CandleDto toCandleDto(
+    /**
+     * 캔들 데이터 조회 (DB 우선, 없으면 API 호출)
+     */
+    private List<com.antigravity.trading.domain.dto.CandleDto> fetchCandleData(
+            String symbol, LocalDateTime start, LocalDateTime end) {
+
+        // 1. DB에서 조회 시도
+        List<com.antigravity.trading.domain.entity.CandleHistory> dbCandles =
+                candleHistoryRepository.findBySymbolAndTimeBetween(symbol, start, end);
+
+        if (dbCandles != null && !dbCandles.isEmpty()) {
+            log.info("Loaded {} candles from DB for {}", dbCandles.size(), symbol);
+
+            // DB → DTO 변환
+            return dbCandles.stream()
+                    .map(this::toCandleDtoFromEntity)
+                    .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
+                    .toList();
+        }
+
+        // 2. DB에 데이터 없으면 API 호출 (폴백)
+        log.warn("No data in DB for {} ({} ~ {}), falling back to KIS API", symbol, start, end);
+
+        KisChartResponse response = kisApiClient.getDailyChart(symbol, start, end);
+        List<KisChartResponse.Output2> rawCandles = response.getOutput2();
+
+        if (rawCandles == null || rawCandles.isEmpty()) {
+            throw new IllegalArgumentException("No data found for the given period (DB and API both empty)");
+        }
+
+        // 3. API → DTO 변환
+        return rawCandles.stream()
+                .map(this::toCandleDtoFromApi)
+                .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
+                .toList();
+    }
+
+    /**
+     * CandleHistory 엔티티를 CandleDto로 변환
+     */
+    private com.antigravity.trading.domain.dto.CandleDto toCandleDtoFromEntity(
+            com.antigravity.trading.domain.entity.CandleHistory entity) {
+
+        // LocalDateTime → "yyyy-MM-dd" 형식 문자열
+        String timeStr = entity.getTime().toLocalDate().toString();
+
+        return com.antigravity.trading.domain.dto.CandleDto.builder()
+                .time(timeStr)
+                .open(entity.getOpen())
+                .high(entity.getHigh())
+                .low(entity.getLow())
+                .close(entity.getClose())
+                .volume(entity.getVolume() != null ? new BigDecimal(entity.getVolume()) : BigDecimal.ZERO)
+                .build();
+    }
+
+    /**
+     * KIS API 응답을 CandleDto로 변환 (기존 메서드 이름 변경)
+     */
+    private com.antigravity.trading.domain.dto.CandleDto toCandleDtoFromApi(
             KisChartResponse.Output2 output) {
         String r = output.getStckBsopDate();
         String fmt = r;

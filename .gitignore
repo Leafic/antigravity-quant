@@ -46,6 +46,7 @@ yarn-error.log*
 # Credentials
 antigravity/backend/src/main/resources/application.yml
 antigravity/backend/src/main/resources/application-secret.yml
+.env
 
 # Temp
 tmp/
