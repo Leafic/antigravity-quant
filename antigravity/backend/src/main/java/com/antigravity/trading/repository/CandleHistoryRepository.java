@@ -40,4 +40,9 @@ public interface CandleHistoryRepository extends JpaRepository<CandleHistory, Lo
 
     // 특정 날짜의 데이터 조회
     Optional<CandleHistory> findBySymbolAndTime(String symbol, LocalDateTime time);
+
+    // 특정 종목의 모든 캔들 데이터 삭제
+    @Modifying
+    @Query("DELETE FROM CandleHistory c WHERE c.symbol = :symbol")
+    void deleteBySymbol(@Param("symbol") String symbol);
 }

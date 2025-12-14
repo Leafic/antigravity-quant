@@ -301,6 +301,11 @@ public class DataPipelineService {
                 }
 
                 CandleHistory candle = convertToCandle(symbol, output);
+
+                // 디버그: 데이터 검증
+                log.debug("Saving candle - symbol: {}, date: {}, close: {}",
+                    candle.getSymbol(), candle.getTime().toLocalDate(), candle.getClose());
+
                 newCandles.add(candle);
             }
 

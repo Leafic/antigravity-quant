@@ -157,8 +157,8 @@ export const api = {
         });
         return res.json();
     },
-    deleteScheduledStock: async (id: number): Promise<any> => {
-        const res = await fetch(`${API_BASE_URL}/scheduled-stocks/${id}`, {
+    deleteScheduledStock: async (id: number, deleteData: boolean = false): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/scheduled-stocks/${id}?deleteData=${deleteData}`, {
             method: 'DELETE'
         });
         if (!res.ok) {

@@ -15,6 +15,7 @@ export function TradingDashboard() {
     const [targets, setTargets] = useState<any[]>([]);
     const [selectedSymbol, setSelectedSymbol] = useState('005930');
     const [selectedStockName, setSelectedStockName] = useState('삼성전자');
+    const [searchInput, setSearchInput] = useState('005930'); // 검색창 입력용 별도 state
     const [timeframe, setTimeframe] = useState('daily');
 
     // UI States
@@ -37,7 +38,35 @@ export function TradingDashboard() {
     }, []);
 
     useEffect(() => {
-        fetchChartData(selectedSymbol, timeframe);
+        let isCancelled = false;
+
+        const fetchChart = async () => {
+            try {
+                const data = await api.getCandles(selectedSymbol, timeframe);
+
+                // 요청 도중 다른 종목으로 변경되었으면 무시
+                if (isCancelled) return;
+
+                const chartData = data.map((c: any) => ({
+                    time: c.time.split('T')[0],
+                    open: c.open,
+                    high: c.high,
+                    low: c.low,
+                    close: c.close
+                }));
+                setCandles(chartData);
+            } catch (e) {
+                if (isCancelled) return;
+                console.error("Failed to fetch chart", e);
+                setCandles([]);
+            }
+        };
+
+        fetchChart();
+
+        return () => {
+            isCancelled = true;
+        };
     }, [selectedSymbol, timeframe]);
 
     // 실시간 갱신이 필요한 데이터 (킬스위치, 오늘의 타겟)
@@ -74,23 +103,6 @@ export function TradingDashboard() {
         }
     };
 
-    const fetchChartData = async (symbol: string, tf: string) => {
-        try {
-            const data = await api.getCandles(symbol, tf);
-            const chartData = data.map((c: any) => ({
-                time: c.time.split('T')[0],
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close
-            }));
-            setCandles(chartData);
-        } catch (e) {
-            console.error("Failed to fetch chart", e);
-            setCandles([]);
-        }
-    };
-
     const toggleKillSwitch = async () => {
         if (systemActive === null) return;
         try {
@@ -108,6 +120,7 @@ export function TradingDashboard() {
         setShowBacktestResult(false);
         setSelectedSymbol(stock.code);
         setSelectedStockName(stock.name);
+        setSearchInput(stock.code); // 검색창에도 선택된 종목코드 반영
     };
 
     const handleTargetSelect = (symbol: string) => {
@@ -117,6 +130,7 @@ export function TradingDashboard() {
         setShowBacktestResult(false);
         const target = targets.find(t => t.symbol === symbol);
         setSelectedSymbol(symbol);
+        setSearchInput(symbol); // 검색창에도 반영
         if (target) {
             setSelectedStockName(target.name);
         }
@@ -162,8 +176,8 @@ export function TradingDashboard() {
                     {/* Stock Search */}
                     <div className="w-80">
                         <StockAutocomplete
-                            value={selectedSymbol}
-                            onChange={setSelectedSymbol}
+                            value={searchInput}
+                            onChange={setSearchInput}
                             onSelect={handleStockSelect}
                             placeholder="종목 검색..."
                         />

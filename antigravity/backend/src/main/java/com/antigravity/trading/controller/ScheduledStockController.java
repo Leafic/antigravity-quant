@@ -1,10 +1,12 @@
 package com.antigravity.trading.controller;
 
 import com.antigravity.trading.domain.entity.ScheduledStock;
+import com.antigravity.trading.repository.CandleHistoryRepository;
 import com.antigravity.trading.repository.ScheduledStockRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -22,6 +24,7 @@ import java.util.Map;
 public class ScheduledStockController {
 
     private final ScheduledStockRepository scheduledStockRepository;
+    private final CandleHistoryRepository candleHistoryRepository;
 
     /**
      * 모든 스케줄링 종목 조회
@@ -145,26 +148,52 @@ public class ScheduledStockController {
 
     /**
      * 스케줄링 종목 삭제
-     * DELETE /api/scheduled-stocks/{id}
+     * DELETE /api/scheduled-stocks/{id}?deleteData=true
+     * deleteData=true면 수집된 캔들 데이터도 함께 삭제
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> deleteScheduledStock(@PathVariable Long id) {
-        log.info("Deleting scheduled stock ID: {}", id);
+    @Transactional
+    public ResponseEntity<Map<String, Object>> deleteScheduledStock(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean deleteData) {
 
-        if (!scheduledStockRepository.existsById(id)) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "종목을 찾을 수 없습니다");
-            return ResponseEntity.notFound().build();
-        }
+        log.info("Deleting scheduled stock ID: {}, deleteData: {}", id, deleteData);
 
-        scheduledStockRepository.deleteById(id);
+        return scheduledStockRepository.findById(id)
+                .map(stock -> {
+                    Map<String, Object> response = new HashMap<>();
+                    String symbol = stock.getSymbol();
+                    String name = stock.getName();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "종목이 삭제되었습니다");
+                    long deletedCandleCount = 0;
+                    if (deleteData) {
+                        // 수집된 캔들 데이터 삭제
+                        deletedCandleCount = candleHistoryRepository.countBySymbol(symbol);
+                        if (deletedCandleCount > 0) {
+                            candleHistoryRepository.deleteBySymbol(symbol);
+                            log.info("Deleted {} candles for symbol: {}", deletedCandleCount, symbol);
+                        }
+                    }
 
-        return ResponseEntity.ok(response);
+                    // 스케줄링 종목 삭제
+                    scheduledStockRepository.deleteById(id);
+
+                    response.put("success", true);
+                    if (deleteData && deletedCandleCount > 0) {
+                        response.put("message", String.format("%s 종목과 %d건의 캔들 데이터가 삭제되었습니다", name, deletedCandleCount));
+                        response.put("deletedCandleCount", deletedCandleCount);
+                    } else {
+                        response.put("message", "종목이 삭제되었습니다");
+                    }
+
+                    return ResponseEntity.ok(response);
+                })
+                .orElseGet(() -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", false);
+                    response.put("message", "종목을 찾을 수 없습니다");
+                    return ResponseEntity.notFound().build();
+                });
     }
 
     /**

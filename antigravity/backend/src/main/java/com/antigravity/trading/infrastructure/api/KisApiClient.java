@@ -214,6 +214,11 @@ public class KisApiClient {
                         .block();
 
                 if (response != null && response.getOutput2() != null && !response.getOutput2().isEmpty()) {
+                    // 응답 데이터 검증 로그
+                    KisChartResponse.Output2 firstCandle = response.getOutput2().get(0);
+                    log.info("KIS API Response for {} - First candle: date={}, close={}",
+                        symbol, firstCandle.getStckBsopDate(), firstCandle.getStckClpr());
+
                     finalResponse.getOutput2().addAll(response.getOutput2());
                     if (finalResponse.getOutput1() == null)
                         finalResponse.setOutput1(response.getOutput1()); // Set generic info once

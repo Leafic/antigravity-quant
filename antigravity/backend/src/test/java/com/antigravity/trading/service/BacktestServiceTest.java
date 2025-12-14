@@ -58,24 +58,27 @@ class BacktestServiceTest {
     void runBacktest_ShouldExecuteStrategyAndLogDecisions() {
         // Arrange
         String symbol = "005930";
-        LocalDateTime start = LocalDateTime.now().minusDays(30);
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime start = LocalDateTime.of(2023, 1, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2023, 1, 31, 23, 59);
 
         // Mock DB Response - Empty to fallback to API
         when(candleHistoryRepository.findBySymbolAndTimeBetween(anyString(), any(), any()))
                 .thenReturn(new ArrayList<>());
 
         // Mock KIS Response (Need at least 21 candles for MA20 + 1)
+        // Create 30 candles with different dates within range
         KisChartResponse response = new KisChartResponse();
-        KisChartResponse.Output2 output = new KisChartResponse.Output2();
-        output.setStckBsopDate("20230101");
-        output.setStckClpr("10000");
-        output.setStckHgpr("11000");
-        output.setStckLwpr("9000");
-        output.setStckOprc("9500");
-        output.setAcmlVol("100000");
-
-        List<KisChartResponse.Output2> outputs = Collections.nCopies(30, output); // 30 candles
+        List<KisChartResponse.Output2> outputs = new ArrayList<>();
+        for (int i = 1; i <= 30; i++) {
+            KisChartResponse.Output2 output = new KisChartResponse.Output2();
+            output.setStckBsopDate(String.format("202301%02d", i)); // 20230101 ~ 20230130
+            output.setStckClpr("10000");
+            output.setStckHgpr("11000");
+            output.setStckLwpr("9000");
+            output.setStckOprc("9500");
+            output.setAcmlVol("100000");
+            outputs.add(output);
+        }
         response.setOutput2(outputs);
 
         when(kisApiClient.getDailyChart(any(), any(), any())).thenReturn(response);

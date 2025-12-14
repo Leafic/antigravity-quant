@@ -125,6 +125,49 @@ public class CandleController {
     }
 
     /**
+     * 특정 종목의 특정 날짜 데이터 삭제 (잘못된 데이터 정리용)
+     * DELETE /api/candles?symbol=314130&date=2025-12-14
+     */
+    @DeleteMapping
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<Map<String, Object>> deleteCandle(
+            @RequestParam String symbol,
+            @RequestParam String date) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // date: "2025-12-14" 형식
+            java.time.LocalDate localDate = java.time.LocalDate.parse(date);
+            LocalDateTime startOfDay = localDate.atStartOfDay();
+            LocalDateTime endOfDay = localDate.atTime(23, 59, 59);
+
+            // 삭제 전 데이터 확인
+            var candles = candleHistoryRepository.findBySymbolAndTimeBetween(symbol, startOfDay, endOfDay);
+
+            if (candles.isEmpty()) {
+                response.put("success", false);
+                response.put("message", "No data found for " + symbol + " on " + date);
+                return ResponseEntity.ok(response);
+            }
+
+            // 삭제
+            candleHistoryRepository.deleteBySymbolAndTimeBetween(symbol, startOfDay, endOfDay);
+
+            response.put("success", true);
+            response.put("message", "Deleted " + candles.size() + " candle(s) for " + symbol + " on " + date);
+            response.put("deletedCount", candles.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
      * 특정 종목의 데이터 보유 기간 조회
      * GET /api/candles/data-range?symbol=005930
      */

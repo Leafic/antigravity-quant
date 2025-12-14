@@ -280,15 +280,48 @@ export function SchedulerDashboard() {
         }
     };
 
-    const handleDeleteStock = async (id: number, name: string) => {
-        if (!confirm(`${name} 종목을 삭제하시겠습니까?`)) return;
+    const handleDeleteStock = async (id: number, name: string, symbol: string) => {
+        const stock = scheduledStocks.find(s => s.id === id);
+        const dataStatus = stockDataStatus[symbol];
+        const hasData = dataStatus?.hasData && dataStatus?.totalDays > 0;
+
+        // 데이터가 있으면 삭제 옵션 제공
+        let deleteData = false;
+        if (hasData) {
+            const choice = window.confirm(
+                `${name} (${symbol}) 종목을 삭제하시겠습니까?\n\n` +
+                `📊 수집된 데이터: ${dataStatus.totalDays}일 (${dataStatus.minDate} ~ ${dataStatus.maxDate})\n\n` +
+                `[확인] 종목만 삭제 (데이터 유지)\n` +
+                `[취소] 후 아래 질문에서 데이터 삭제 선택 가능`
+            );
+
+            if (choice) {
+                // 종목만 삭제
+                deleteData = false;
+            } else {
+                // 데이터도 함께 삭제할지 다시 확인
+                const deleteDataChoice = window.confirm(
+                    `${name}의 수집된 데이터(${dataStatus.totalDays}일)도 함께 삭제하시겠습니까?\n\n` +
+                    `⚠️ 이 작업은 되돌릴 수 없습니다.\n\n` +
+                    `[확인] 종목 + 데이터 모두 삭제\n` +
+                    `[취소] 삭제 취소`
+                );
+
+                if (!deleteDataChoice) {
+                    return; // 삭제 취소
+                }
+                deleteData = true;
+            }
+        } else {
+            // 데이터가 없으면 단순 삭제 확인
+            if (!confirm(`${name} 종목을 삭제하시겠습니까?`)) return;
+        }
 
         try {
-            const result = await api.deleteScheduledStock(id);
+            const result = await api.deleteScheduledStock(id, deleteData);
             if (result.success) {
-                alert('종목이 삭제되었습니다');
+                alert(result.message || '종목이 삭제되었습니다');
                 // 선택 목록에서도 제거
-                const stock = scheduledStocks.find(s => s.id === id);
                 if (stock) {
                     setSelectedSymbols(prev => {
                         const newSet = new Set(prev);
@@ -766,7 +799,7 @@ export function SchedulerDashboard() {
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleDeleteStock(stock.id, stock.name);
+                                                handleDeleteStock(stock.id, stock.name, stock.symbol);
                                             }}
                                             className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
                                         >
