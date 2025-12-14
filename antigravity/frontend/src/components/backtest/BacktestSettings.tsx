@@ -26,6 +26,7 @@ export const BacktestSettings: React.FC<BacktestSettingsProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(true);
     const [showParams, setShowParams] = useState(false);
+    const [mode, setMode] = useState<'DAILY' | 'INTRADAY'>('DAILY');
 
     return (
         <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden mb-4">
@@ -48,8 +49,25 @@ export const BacktestSettings: React.FC<BacktestSettingsProps> = ({
                             <StockSearch selectedCode={symbol} onSelect={setSymbol} />
                         </div>
                         <div className="space-y-1">
+                            <label className="text-xs text-slate-500">모드</label>
+                            <div className="flex bg-slate-900 rounded p-1 border border-slate-700">
+                                <button
+                                    onClick={() => setMode('DAILY')}
+                                    className={`flex-1 text-xs py-1 rounded ${mode === 'DAILY' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    일봉 스윙 (Daily)
+                                </button>
+                                <button
+                                    onClick={() => setMode('INTRADAY')}
+                                    className={`flex-1 text-xs py-1 rounded ${mode === 'INTRADAY' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    단타 (Intraday)
+                                </button>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
                             <label className="text-xs text-slate-500">전략</label>
-                            <StrategySelect selectedId={strategyId} onSelect={handleStrategySelect} />
+                            <StrategySelect selectedId={strategyId} onSelect={handleStrategySelect} mode={mode} />
                         </div>
                     </div>
 

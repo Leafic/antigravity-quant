@@ -30,9 +30,17 @@ public class MarketEvent {
     private final boolean isMa20Rising; // Slope check
     private final double volumeRatio; // Current Vol / Avg Vol
     private final Double rsi; // can be null
+
     // Support/Resistance V2
     private final BigDecimal boxHigh;
     private final BigDecimal boxLow;
+
+    // Phase 14: Daily Swing & Intraday
+    private final Double atr; // Average True Range
+    private final BigDecimal donchianHigh;
+    private final BigDecimal donchianLow;
+    private final BigDecimal openingRangeHigh; // For S5
+    private final BigDecimal openingRangeLow; // For S5
 
     public boolean isValid() {
         return currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) > 0;

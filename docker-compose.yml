@@ -22,6 +22,8 @@ services:
       - "6379:6379"
     networks:
       - antigravity-net
+    environment:
+      TZ: Asia/Seoul
 
   backend:
     build:
@@ -42,6 +44,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_GROUP_CHAT_ID: ${TELEGRAM_GROUP_CHAT_ID}
       TELEGRAM_PRIVATE_CHAT_IDS: ${TELEGRAM_PRIVATE_CHAT_IDS}
+      TZ: Asia/Seoul
     ports:
       - "8080:8080"
     depends_on:
@@ -61,6 +64,8 @@ services:
       - backend
     networks:
       - antigravity-net
+    environment:
+      TZ: Asia/Seoul
 
 networks:
   antigravity-net:

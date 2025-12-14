@@ -14,9 +14,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class EnsembleStrategy implements TradingStrategy {
 
-    private final TrendMomentumStrategy s1;
-    private final RsiMeanReversionStrategy s2;
-    private final SupportResistanceStrategy s3;
+    private final DonchianStrategy s1;
+    private final PullbackStrategy s2;
+    private final VolatilitySqueezeStrategy s3;
 
     @Data
     @EqualsAndHashCode(callSuper = true)
@@ -24,8 +24,8 @@ public class EnsembleStrategy implements TradingStrategy {
         private double w1 = 0.4; // Trend Weight
         private double w2 = 0.3; // RSI Weight
         private double w3 = 0.3; // Support/Resistance Weight
-        private double buyThreshold = 0.5;
-        private double sellThreshold = -0.5;
+        private double buyThreshold = 0.6;
+        private double sellThreshold = -0.2;
     }
 
     @Override
@@ -35,7 +35,7 @@ public class EnsembleStrategy implements TradingStrategy {
 
     @Override
     public String getName() {
-        return "Ensemble Model";
+        return "S4 - 앙상블 (Ensemble)";
     }
 
     @Override
@@ -66,20 +66,22 @@ public class EnsembleStrategy implements TradingStrategy {
         // Logging Components (e.g. to extraData or Signal reason)
         String reasoning = String.format("S1:%.1f, S2:%.1f, S3:%.1f -> Final:%.2f", score1, score2, score3, finalScore);
 
-        if (finalScore >= params.buyThreshold) {
+        if (finalScore >= params.buyThreshold && !context.isHasPosition()) {
             return Signal.builder()
                     .type(Signal.Type.BUY)
                     .strategyName(getName())
                     .reasonCode("ENSEMBLE_BUY")
-                    .reasonMessageKo("앙상블 매수 (" + reasoning + ")")
-                    .sizeFactor(Math.min(1.0, Math.abs(finalScore))) // Scale size by confidence?
+                    .reasonMessageKo("전략 합산 점수 " + String.format("%.2f", finalScore) + " (S1:" + score1 + " S2:"
+                            + score2 + " S3:" + score3 + ")")
+                    .sizeFactor(1.0)
+                    .confidence(finalScore)
                     .build();
-        } else if (finalScore <= params.sellThreshold) {
+        } else if (context.isHasPosition() && finalScore <= params.sellThreshold) {
             return Signal.builder()
                     .type(Signal.Type.SELL)
                     .strategyName(getName())
                     .reasonCode("ENSEMBLE_SELL")
-                    .reasonMessageKo("앙상블 매도 (" + reasoning + ")")
+                    .reasonMessageKo("전략 합산 점수 하락 (" + String.format("%.2f", finalScore) + ")")
                     .sizeFactor(1.0)
                     .build();
         }
@@ -89,7 +91,7 @@ public class EnsembleStrategy implements TradingStrategy {
 
     private double getScore(Signal signal) {
         if (signal.getType() == Signal.Type.BUY)
-            return 1.0;
+            return 1.0 * (signal.getConfidence() > 0 ? signal.getConfidence() : 0.5);
         if (signal.getType() == Signal.Type.SELL)
             return -1.0;
         return 0.0;

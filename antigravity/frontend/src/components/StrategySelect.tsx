@@ -11,9 +11,10 @@ interface Strategy {
 interface Props {
     selectedId: string;
     onSelect: (id: string, params: string) => void;
+    mode: 'DAILY' | 'INTRADAY';
 }
 
-export const StrategySelect: React.FC<Props> = ({ selectedId, onSelect }) => {
+export const StrategySelect: React.FC<Props> = ({ selectedId, onSelect, mode }) => {
     const [strategies, setStrategies] = useState<Strategy[]>([]);
 
     useEffect(() => {
@@ -34,7 +35,10 @@ export const StrategySelect: React.FC<Props> = ({ selectedId, onSelect }) => {
                 onChange={handleChange}
                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
             >
-                {strategies.map(s => (
+                {strategies.filter(s => {
+                    const isIntraday = s.id === 'S5';
+                    return mode === 'INTRADAY' ? isIntraday : !isIntraday;
+                }).map(s => (
                     <option key={s.id} value={s.id}>
                         {s.name}
                     </option>
