@@ -31,3 +31,16 @@ kis:
   app-secret: "${KIS_APP_SECRET:YOUR_APP_SECRET}"
   account-no: "${KIS_ACCOUNT_NO:YOUR_ACCOUNT_NO}"
   base-url: "https://openapivts.koreainvestment.com:29443"
+
+telegram:
+   bot-token: ${TELEGRAM_BOT_TOKEN:YOUR_BOT_TOKEN}
+   group-chat-id: ${TELEGRAM_GROUP_CHAT_ID:YOUR_GROUP_CHAT_ID}
+   private-chat-ids: ${TELEGRAM_PRIVATE_CHAT_IDS:YOUR_PRIVATE_CHAT_IDS}
+
+scheduler:
+  data-collection:
+    enabled: ${SCHEDULER_ENABLED:false}  # 기본값: false (개발 환경에서는 수동 실행)
+    cron: "0 0 2 * * *"  # 매일 새벽 2시
+  stock-master-sync:
+    enabled: ${SCHEDULER_ENABLED:false}  # 기본값: false (개발 환경에서는 수동 실행)
+    cron: "0 0 1 * * SUN"  # 매주 일요일 새벽 1시
