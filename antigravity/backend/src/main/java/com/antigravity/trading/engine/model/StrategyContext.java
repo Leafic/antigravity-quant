@@ -22,7 +22,12 @@ public class StrategyContext {
     // Account Info (for sizing)
     private BigDecimal availableCash;
 
-    // Strategy Specific State (e.g. today's entry count)
+    // Strategy Specific State
     private int dailyEntryCount;
     private Map<String, Object> extraData;
+
+    // V2: Historical Data Access (for dynamic lookback)
+    // In backtest, this is the window up to current time.
+    // In live, this is fetched from cache/db.
+    private java.util.List<com.antigravity.trading.domain.dto.CandleDto> history;
 }

@@ -10,15 +10,15 @@ import java.util.stream.Collectors;
 @Component
 public class StrategyRegistry {
 
-    private final Map<String, StrategyEngine> strategies = new HashMap<>();
+    private final Map<String, com.antigravity.trading.strategy.v2.TradingStrategy> strategies = new HashMap<>();
 
-    public StrategyRegistry(List<StrategyEngine> strategyList) {
-        for (StrategyEngine strategy : strategyList) {
+    public StrategyRegistry(List<com.antigravity.trading.strategy.v2.TradingStrategy> strategyList) {
+        for (com.antigravity.trading.strategy.v2.TradingStrategy strategy : strategyList) {
             strategies.put(strategy.getId(), strategy);
         }
     }
 
-    public StrategyEngine getStrategy(String id) {
+    public com.antigravity.trading.strategy.v2.TradingStrategy getStrategy(String id) {
         return strategies.get(id);
     }
 
@@ -28,8 +28,12 @@ public class StrategyRegistry {
                     Map<String, String> meta = new HashMap<>();
                     meta.put("id", s.getId());
                     meta.put("name", s.getName());
-                    meta.put("description", s.getDescription());
-                    meta.put("defaultParams", s.getDefaultParamsJson());
+                    try {
+                        meta.put("defaultParams", new com.fasterxml.jackson.databind.ObjectMapper()
+                                .writeValueAsString(s.getDefaultParams()));
+                    } catch (Exception e) {
+                        meta.put("defaultParams", "{}");
+                    }
                     return meta;
                 })
                 .collect(Collectors.toList());

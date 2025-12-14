@@ -36,7 +36,8 @@ public class RealTimeTrader {
     }
 
     private final OrderService orderService;
-    private final com.antigravity.trading.domain.strategy.TradingStrategy tradingStrategy;
+    // private final com.antigravity.trading.domain.strategy.TradingStrategy
+    // tradingStrategy; // Legacy Removed
     private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
     private final org.springframework.context.ApplicationContext applicationContext; // For Lazy retrieval of
                                                                                      // WebsocketClient if needed

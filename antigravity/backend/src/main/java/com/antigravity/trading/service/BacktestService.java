@@ -2,7 +2,6 @@ package com.antigravity.trading.service;
 
 import com.antigravity.trading.domain.entity.BacktestRun;
 import com.antigravity.trading.domain.entity.DecisionLog;
-import com.antigravity.trading.engine.StrategyEngine;
 import com.antigravity.trading.engine.model.MarketEvent;
 import com.antigravity.trading.engine.model.Signal;
 import com.antigravity.trading.engine.model.StrategyContext;
@@ -91,11 +90,12 @@ public class BacktestService {
         List<Double> rsiValues = TechnicalIndicators.calculateRsi(closes, 14);
 
         // 3. Simulate Strategy
-        StrategyEngine strategy = strategyRegistry.getStrategy(strategyId != null ? strategyId : "S1");
+        com.antigravity.trading.strategy.v2.TradingStrategy strategy = strategyRegistry
+                .getStrategy(strategyId != null ? strategyId : "S1");
         if (strategy == null)
             throw new IllegalArgumentException("Unknown Strategy ID: " + strategyId);
 
-        BacktestResult result = simulateStrategy(run.getId(), symbol, candles, strategy, start, end, closes, rsiValues,
+        BacktestResult result = simulateStrategy(run.getId(), symbol, candles, strategy, start, end, rsiValues,
                 paramsJson);
 
         run.setEndedAt(LocalDateTime.now());
@@ -109,9 +109,7 @@ public class BacktestService {
 
     private BacktestResult simulateStrategy(Long runId, String symbol,
             List<com.antigravity.trading.domain.dto.CandleDto> candles,
-            StrategyEngine strategyEngine,
-            LocalDateTime start, LocalDateTime end,
-            List<BigDecimal> rawPrices,
+            com.antigravity.trading.strategy.v2.TradingStrategy strategy, LocalDateTime start, LocalDateTime end,
             List<Double> rsiValues,
             String paramsJson) {
         BigDecimal balance = new BigDecimal("10000000");
@@ -125,14 +123,18 @@ public class BacktestService {
         List<BigDecimal> prices = new ArrayList<>();
         List<BigDecimal> volumes = new ArrayList<>();
 
+        // Context
         StrategyContext context = StrategyContext.builder()
                 .symbol(symbol)
+                .history(candles) // V2: Inject History
                 .hasPosition(false)
                 .entryPrice(BigDecimal.ZERO)
                 .quantity(0L)
                 .availableCash(balance)
                 .extraData(new HashMap<>())
                 .build();
+
+        com.antigravity.trading.strategy.v2.StrategyParams strategyParamsObj = null; // Parsed params
 
         // Parse paramsJson and put into context extraData if needed
         if (paramsJson != null) {
@@ -237,11 +239,25 @@ public class BacktestService {
             // Execute Engine
             MarketEvent analysisEvent = event.toBuilder()
                     .currentPrice(curr.getHigh()) // Use High to test breakout potential
-                    .timestamp(dt.withHour(10).withMinute(0)) // Spoof time to 10:00 to bypass Time Filter (since Daily
-                                                              // Candle is 15:30)
+                    .timestamp(dt.withHour(10).withMinute(0))
                     .build();
 
-            Signal signal = strategyEngine.analyze(analysisEvent, context);
+            // V2: Parse Params once or per loop?
+            // Parsing per loop is inefficient. Ideally parse outside loop.
+            // But we need to do it once.
+            // Better: Parse "paramsJson" at start of simulateStrategy.
+            if (strategyParamsObj == null) {
+                // Initialize params
+                try {
+                    strategyParamsObj = com.antigravity.trading.strategy.v2.StrategyParams.fromJson(paramsJson,
+                            strategy.getParamsClass());
+                } catch (Exception e) {
+                    log.error("Failed to parse params", e);
+                    strategyParamsObj = strategy.getDefaultParams();
+                }
+            }
+
+            Signal signal = strategy.evaluate(analysisEvent, context, strategyParamsObj);
 
             // Log Decision
             if (signal.getType() != Signal.Type.NONE) {
@@ -362,8 +378,8 @@ public class BacktestService {
             String symbol, LocalDateTime start, LocalDateTime end) {
 
         // 1. DB에서 조회 시도
-        List<com.antigravity.trading.domain.entity.CandleHistory> dbCandles =
-                candleHistoryRepository.findBySymbolAndTimeBetween(symbol, start, end);
+        List<com.antigravity.trading.domain.entity.CandleHistory> dbCandles = candleHistoryRepository
+                .findBySymbolAndTimeBetween(symbol, start, end);
 
         if (dbCandles != null && !dbCandles.isEmpty()) {
             log.info("Loaded {} candles from DB for {}", dbCandles.size(), symbol);
