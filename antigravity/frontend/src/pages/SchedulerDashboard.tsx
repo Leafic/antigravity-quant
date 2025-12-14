@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, Play, CheckCircle, XCircle, RefreshCw, Activity, Plus, Trash2, Power, Database, CheckSquare, Square } from 'lucide-react';
+import { Calendar, Clock, Play, CheckCircle, XCircle, RefreshCw, Activity, Plus, Trash2, Power, Database, CheckSquare, Square, AlertTriangle, CalendarDays } from 'lucide-react';
 import { api } from '../services/api';
 import { StockAutocomplete } from '../components/StockAutocomplete';
+import { MissingDatesCalendar } from '../components/MissingDatesCalendar';
 
 export function SchedulerDashboard() {
     const [status, setStatus] = useState<any>(null);
@@ -17,6 +18,21 @@ export function SchedulerDashboard() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
+    const [calendarModal, setCalendarModal] = useState<{
+        isOpen: boolean;
+        symbol: string;
+        stockName: string;
+        missingDates: string[];
+        minDate: string;
+        maxDate: string;
+    }>({
+        isOpen: false,
+        symbol: '',
+        stockName: '',
+        missingDates: [],
+        minDate: '',
+        maxDate: ''
+    });
 
     useEffect(() => {
         // 기본 날짜 설정 (오늘부터 100일 전)
@@ -133,6 +149,86 @@ export function SchedulerDashboard() {
         }
     };
 
+    const handleCollectGaps = async () => {
+        const symbolsToCollect = Array.from(selectedSymbols);
+
+        if (symbolsToCollect.length === 0) {
+            alert('갭 수집할 종목을 선택하세요.');
+            return;
+        }
+
+        // 갭이 있는 종목만 필터링
+        const symbolsWithGaps = symbolsToCollect.filter(symbol => {
+            const status = stockDataStatus[symbol];
+            return status?.hasGaps && status?.gapCount > 0;
+        });
+
+        if (symbolsWithGaps.length === 0) {
+            alert('선택된 종목 중 빠진 날짜(갭)가 있는 종목이 없습니다.');
+            return;
+        }
+
+        const totalGaps = symbolsWithGaps.reduce((sum, symbol) => {
+            return sum + (stockDataStatus[symbol]?.gapCount || 0);
+        }, 0);
+
+        if (!confirm(`선택된 ${symbolsWithGaps.length}개 종목의 빠진 날짜(총 ${totalGaps}일)를 수집하시겠습니까?`)) return;
+
+        setTriggering(true);
+        try {
+            const result = await api.collectGapsForSymbols(symbolsWithGaps);
+            if (result.success) {
+                alert(`갭 수집 완료!\n신규 데이터: ${result.newDataCount}건`);
+            } else {
+                alert(`일부 실패: ${result.message}`);
+            }
+            fetchData();
+        } catch (e) {
+            alert('갭 수집 실행 실패: ' + e);
+        } finally {
+            setTriggering(false);
+        }
+    };
+
+    const handleOpenCalendar = (symbol: string, stockName: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const status = stockDataStatus[symbol];
+        if (!status?.missingDates || status.missingDates.length === 0) return;
+
+        setCalendarModal({
+            isOpen: true,
+            symbol,
+            stockName,
+            missingDates: status.missingDates,
+            minDate: status.minDate,
+            maxDate: status.maxDate
+        });
+    };
+
+    const handleCollectSingleGap = async (symbol: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+
+        const status = stockDataStatus[symbol];
+        if (!status?.hasGaps) return;
+
+        if (!confirm(`${symbol}의 빠진 ${status.gapCount}일 데이터를 수집하시겠습니까?`)) return;
+
+        setTriggering(true);
+        try {
+            const result = await api.collectGaps(symbol);
+            if (result.success) {
+                alert(`갭 수집 완료!\n신규 데이터: ${result.newDataCount}건`);
+            } else {
+                alert(`실패: ${result.message}`);
+            }
+            fetchData();
+        } catch (e) {
+            alert('갭 수집 실행 실패: ' + e);
+        } finally {
+            setTriggering(false);
+        }
+    };
+
     const handleSyncStockMaster = async () => {
         if (!confirm('종목 마스터 데이터를 동기화하시겠습니까?\n(KOSPI + KOSDAQ 전체 종목 정보를 다운로드합니다)')) return;
 
@@ -191,7 +287,18 @@ export function SchedulerDashboard() {
             const result = await api.deleteScheduledStock(id);
             if (result.success) {
                 alert('종목이 삭제되었습니다');
+                // 선택 목록에서도 제거
+                const stock = scheduledStocks.find(s => s.id === id);
+                if (stock) {
+                    setSelectedSymbols(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(stock.symbol);
+                        return newSet;
+                    });
+                }
                 fetchData();
+            } else {
+                alert('삭제 실패: ' + (result.message || '알 수 없는 오류'));
             }
         } catch (e) {
             alert('종목 삭제 실패: ' + e);
@@ -352,10 +459,22 @@ export function SchedulerDashboard() {
                         <Play size={16} />
                         {triggering ? '수집 중...' : (selectedSymbols.size > 0 ? `선택 종목(${selectedSymbols.size}) 수집` : '전체 수집')}
                     </button>
+
+                    <button
+                        onClick={handleCollectGaps}
+                        disabled={triggering || selectedSymbols.size === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="선택된 종목의 빠진 날짜만 수집합니다"
+                    >
+                        <AlertTriangle size={16} />
+                        {triggering ? '수집 중...' : '갭 수집'}
+                    </button>
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
                     * 이미 저장된 날짜의 데이터는 자동으로 건너뜁니다. 아래 종목 목록에서 수집할 종목을 선택하세요.
+                    <br />
+                    * <span className="text-amber-400">갭 수집</span>: 선택된 종목의 빠진 날짜(주말 제외)만 수집합니다.
                 </p>
             </div>
 
@@ -579,12 +698,54 @@ export function SchedulerDashboard() {
                                             {stock.note && <div className="text-xs text-slate-400">{stock.note}</div>}
                                             {/* 데이터 현황 표시 */}
                                             {dataStatus && (
-                                                <div className="text-xs mt-1">
+                                                <div className="text-xs mt-1 flex items-center gap-2 flex-wrap">
                                                     {dataStatus.hasData ? (
-                                                        <span className="text-emerald-400">
-                                                            <Database size={12} className="inline mr-1" />
-                                                            {dataStatus.minDate} ~ {dataStatus.maxDate} ({dataStatus.totalDays}일)
-                                                        </span>
+                                                        <>
+                                                            <span className="text-emerald-400">
+                                                                <Database size={12} className="inline mr-1" />
+                                                                {dataStatus.minDate} ~ {dataStatus.maxDate} ({dataStatus.totalDays}일)
+                                                            </span>
+                                                            {/* 신뢰도 배지 */}
+                                                            {dataStatus.reliabilityLevel && (
+                                                                <span
+                                                                    className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                                                        dataStatus.reliabilityLevel === 'HIGH'
+                                                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                                            : dataStatus.reliabilityLevel === 'MEDIUM'
+                                                                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                                            : dataStatus.reliabilityLevel === 'LOW'
+                                                                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                                                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                                    }`}
+                                                                    title={`완결성: ${dataStatus.completenessRate?.toFixed(1)}% (${dataStatus.totalDays}/${dataStatus.expectedTradingDays}일)`}
+                                                                >
+                                                                    {dataStatus.reliabilityLevel === 'HIGH' ? '신뢰' :
+                                                                     dataStatus.reliabilityLevel === 'MEDIUM' ? '양호' :
+                                                                     dataStatus.reliabilityLevel === 'LOW' ? '주의' : '불완전'}
+                                                                    {' '}{dataStatus.completenessRate?.toFixed(0)}%
+                                                                </span>
+                                                            )}
+                                                            {dataStatus.hasGaps && dataStatus.gapCount > 0 && (
+                                                                <span className="text-amber-400 flex items-center gap-1">
+                                                                    <AlertTriangle size={12} />
+                                                                    빠진 {dataStatus.gapCount}일
+                                                                    <button
+                                                                        onClick={(e) => handleOpenCalendar(stock.symbol, stock.name, e)}
+                                                                        className="ml-1 p-1 bg-amber-500/20 border border-amber-500/50 text-amber-400 rounded hover:bg-amber-500/30 transition-all"
+                                                                        title="빠진 날짜 달력 보기"
+                                                                    >
+                                                                        <CalendarDays size={12} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => handleCollectSingleGap(stock.symbol, e)}
+                                                                        disabled={triggering}
+                                                                        className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-400 rounded hover:bg-amber-500/30 transition-all disabled:opacity-50"
+                                                                    >
+                                                                        수집
+                                                                    </button>
+                                                                </span>
+                                                            )}
+                                                        </>
                                                     ) : (
                                                         <span className="text-amber-400">
                                                             <Database size={12} className="inline mr-1" />
@@ -663,6 +824,17 @@ export function SchedulerDashboard() {
                     </table>
                 </div>
             </div>
+
+            {/* Missing Dates Calendar Modal */}
+            <MissingDatesCalendar
+                isOpen={calendarModal.isOpen}
+                onClose={() => setCalendarModal(prev => ({ ...prev, isOpen: false }))}
+                symbol={calendarModal.symbol}
+                stockName={calendarModal.stockName}
+                missingDates={calendarModal.missingDates}
+                minDate={calendarModal.minDate}
+                maxDate={calendarModal.maxDate}
+            />
         </div>
     );
 }

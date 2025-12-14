@@ -122,10 +122,22 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
         }
     }, [highlightTimestamp]);
 
-    // Update Data
+    // Update Data - 종목 변경 시 이전 데이터를 완전히 지우고 새로 그림
     useEffect(() => {
-        if (!data || data.length === 0) return;
         if (!candleSeriesRef.current) return;
+
+        // 먼저 마커를 초기화 (이전 종목의 마커 제거)
+        // @ts-ignore
+        candleSeriesRef.current.setMarkers([]);
+
+        // 데이터가 없으면 차트 비우기
+        if (!data || data.length === 0) {
+            candleSeriesRef.current.setData([]);
+            if (sma5Ref.current) sma5Ref.current.setData([]);
+            if (sma20Ref.current) sma20Ref.current.setData([]);
+            if (sma60Ref.current) sma60Ref.current.setData([]);
+            return;
+        }
 
         // Cast time to Time type for lightweight-charts
         const formattedData = data.map(d => ({ ...d, time: d.time as Time }));
@@ -136,17 +148,19 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
         if (sma20Ref.current) sma20Ref.current.setData(calculateSMA(formattedData, 20).map(d => ({ ...d, time: d.time as Time })));
         if (sma60Ref.current) sma60Ref.current.setData(calculateSMA(formattedData, 60).map(d => ({ ...d, time: d.time as Time })));
 
-        if (sma60Ref.current) sma60Ref.current.setData(calculateSMA(formattedData, 60).map(d => ({ ...d, time: d.time as Time })));
+        // 차트 시간 범위를 데이터에 맞게 리셋
+        if (chartRef.current) {
+            chartRef.current.timeScale().fitContent();
+        }
 
-        // Set Markers
-        if (props.markers && candleSeriesRef.current) {
+        // Set Markers (새 데이터에 대한 마커)
+        if (props.markers && props.markers.length > 0 && candleSeriesRef.current) {
             const markers = props.markers.map(m => ({
-                time: m.time.split('T')[0] as Time, // Assuming daily 'yyyy-MM-dd' or similar
+                time: m.time.split('T')[0] as Time,
                 position: m.type === 'BUY' ? 'belowBar' : 'aboveBar',
                 color: m.type === 'BUY' ? '#ef4444' : '#3b82f6',
                 shape: m.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-                // text: m.text || m.type, // Removed text as requested
-                size: 1, // Minimal size
+                size: 1,
             }));
             // @ts-ignore
             candleSeriesRef.current.setMarkers(markers);

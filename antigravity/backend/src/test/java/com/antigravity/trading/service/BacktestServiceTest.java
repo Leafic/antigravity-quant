@@ -1,14 +1,17 @@
 package com.antigravity.trading.service;
 
 import com.antigravity.trading.domain.entity.BacktestRun;
+import com.antigravity.trading.domain.entity.CandleHistory;
 import com.antigravity.trading.domain.entity.DecisionLog;
 import com.antigravity.trading.engine.StrategyEngine;
+import com.antigravity.trading.engine.StrategyRegistry;
 import com.antigravity.trading.engine.model.MarketEvent;
 import com.antigravity.trading.engine.model.Signal;
 import com.antigravity.trading.engine.model.StrategyContext;
 import com.antigravity.trading.infrastructure.api.KisApiClient;
 import com.antigravity.trading.infrastructure.api.dto.KisChartResponse;
 import com.antigravity.trading.repository.BacktestRunRepository;
+import com.antigravity.trading.repository.CandleHistoryRepository;
 import com.antigravity.trading.repository.DecisionLogRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,10 +20,12 @@ import org.mockito.MockitoAnnotations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class BacktestServiceTest {
@@ -28,19 +33,25 @@ class BacktestServiceTest {
     @Mock
     private KisApiClient kisApiClient;
     @Mock
+    private StrategyRegistry strategyRegistry;
+    @Mock
     private StrategyEngine strategyEngine;
+    @Mock
+    private ReasonCodeMapper reasonMapper;
     @Mock
     private BacktestRunRepository backtestRunRepository;
     @Mock
     private DecisionLogRepository decisionLogRepository;
+    @Mock
+    private CandleHistoryRepository candleHistoryRepository;
 
     private BacktestService backtestService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        backtestService = new BacktestService(kisApiClient, strategyEngine, backtestRunRepository,
-                decisionLogRepository);
+        backtestService = new BacktestService(kisApiClient, strategyRegistry, reasonMapper,
+                backtestRunRepository, decisionLogRepository, candleHistoryRepository);
     }
 
     @Test
@@ -49,6 +60,10 @@ class BacktestServiceTest {
         String symbol = "005930";
         LocalDateTime start = LocalDateTime.now().minusDays(30);
         LocalDateTime end = LocalDateTime.now();
+
+        // Mock DB Response - Empty to fallback to API
+        when(candleHistoryRepository.findBySymbolAndTimeBetween(anyString(), any(), any()))
+                .thenReturn(new ArrayList<>());
 
         // Mock KIS Response (Need at least 21 candles for MA20 + 1)
         KisChartResponse response = new KisChartResponse();
@@ -69,6 +84,9 @@ class BacktestServiceTest {
             run.setId(1L);
             return run;
         });
+
+        // Mock Strategy Registry to return our mock strategyEngine
+        when(strategyRegistry.getStrategy(anyString())).thenReturn(strategyEngine);
 
         // Mock Strategy Signal
         when(strategyEngine.analyze(any(MarketEvent.class), any(StrategyContext.class)))

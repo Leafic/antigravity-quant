@@ -492,4 +492,134 @@ public class DataPipelineController {
             return ResponseEntity.status(500).body(response);
         }
     }
+
+    /**
+     * 특정 종목의 빠진 날짜(갭)만 수집
+     * POST /api/data-pipeline/collect-gaps/{symbol}
+     */
+    @PostMapping("/collect-gaps/{symbol}")
+    public ResponseEntity<Map<String, Object>> collectMissingDates(@PathVariable String symbol) {
+        log.info("Gap collection triggered for {}", symbol);
+
+        // 히스토리 기록 시작
+        SchedulerHistory history = new SchedulerHistory();
+        history.setJobName("GAP_COLLECTION_MANUAL");
+        history.setStartTime(LocalDateTime.now());
+        history.setStatus("RUNNING");
+        history.setTotalItems(1);
+        history = schedulerHistoryRepository.save(history);
+
+        try {
+            DataPipelineService.CollectionResult result = dataPipelineService.collectMissingDates(symbol);
+
+            // 성공 기록
+            history.setEndTime(LocalDateTime.now());
+            history.setStatus(result.isSuccess() ? "SUCCESS" : "PARTIAL");
+            history.setSuccessItems(result.getSuccessCount());
+            history.setFailedItems(result.getFailCount());
+            history.setMessage(result.getMessage());
+
+            if (result.getFailedSymbols() != null && !result.getFailedSymbols().isEmpty()) {
+                history.setErrorDetails(String.join("\n", result.getFailedSymbols()));
+            }
+            schedulerHistoryRepository.save(history);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", result.isSuccess());
+            response.put("message", result.getMessage());
+            response.put("symbol", symbol);
+            response.put("newDataCount", result.getNewDataCount());
+            response.put("processedRanges", result.getProcessedSymbols());
+            response.put("failedRanges", result.getFailedSymbols());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Gap collection failed for {}: {}", symbol, e.getMessage(), e);
+
+            history.setEndTime(LocalDateTime.now());
+            history.setStatus("FAILED");
+            history.setMessage("Gap collection failed: " + e.getMessage());
+            schedulerHistoryRepository.save(history);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Gap collection failed: " + e.getMessage());
+            response.put("symbol", symbol);
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
+     * 선택한 종목들의 빠진 날짜(갭)만 수집
+     * POST /api/data-pipeline/collect-gaps
+     * Body: ["005930", "000660", ...]
+     */
+    @PostMapping("/collect-gaps")
+    public ResponseEntity<Map<String, Object>> collectMissingDatesForSymbols(@RequestBody List<String> symbols) {
+        log.info("Gap collection triggered for {} symbols", symbols.size());
+
+        if (symbols.isEmpty()) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "선택된 종목이 없습니다.");
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        // 히스토리 기록 시작
+        SchedulerHistory history = new SchedulerHistory();
+        history.setJobName("GAP_COLLECTION_MULTI_MANUAL");
+        history.setStartTime(LocalDateTime.now());
+        history.setStatus("RUNNING");
+        history.setTotalItems(symbols.size());
+        history = schedulerHistoryRepository.save(history);
+
+        try {
+            DataPipelineService.CollectionResult result = dataPipelineService.collectMissingDatesForSymbols(symbols);
+
+            // 성공 기록
+            history.setEndTime(LocalDateTime.now());
+            history.setStatus(result.isSuccess() ? "SUCCESS" : "PARTIAL");
+            history.setSuccessItems(result.getSuccessCount());
+            history.setFailedItems(result.getFailCount());
+            history.setMessage(result.getMessage());
+
+            if (result.getFailedSymbols() != null && !result.getFailedSymbols().isEmpty()) {
+                history.setErrorDetails(String.join("\n", result.getFailedSymbols()));
+            }
+            schedulerHistoryRepository.save(history);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", result.isSuccess());
+            response.put("message", result.getMessage());
+            response.put("totalStocks", result.getTotalStocks());
+            response.put("successCount", result.getSuccessCount());
+            response.put("failCount", result.getFailCount());
+            response.put("newDataCount", result.getNewDataCount());
+            response.put("processedSymbols", result.getProcessedSymbols());
+            response.put("failedSymbols", result.getFailedSymbols());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Gap collection failed: {}", e.getMessage(), e);
+
+            history.setEndTime(LocalDateTime.now());
+            history.setStatus("FAILED");
+            history.setMessage("Gap collection failed: " + e.getMessage());
+            schedulerHistoryRepository.save(history);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Gap collection failed: " + e.getMessage());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.status(500).body(response);
+        }
+    }
 }

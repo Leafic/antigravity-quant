@@ -102,11 +102,19 @@ export function TradingDashboard() {
     };
 
     const handleStockSelect = (stock: any) => {
+        // 종목 변경 시 차트 데이터를 먼저 비움 (이전 데이터 잔상 방지)
+        setCandles([]);
+        setBacktestResult(null);
+        setShowBacktestResult(false);
         setSelectedSymbol(stock.code);
         setSelectedStockName(stock.name);
     };
 
     const handleTargetSelect = (symbol: string) => {
+        // 종목 변경 시 차트 데이터를 먼저 비움 (이전 데이터 잔상 방지)
+        setCandles([]);
+        setBacktestResult(null);
+        setShowBacktestResult(false);
         const target = targets.find(t => t.symbol === symbol);
         setSelectedSymbol(symbol);
         if (target) {

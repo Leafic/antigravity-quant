@@ -200,12 +200,73 @@ public class DataPipelineService {
             .build();
     }
 
+    private static final int MAX_DAYS_PER_REQUEST = 100;  // KIS API 최대 100일 제한
+
     /**
-     * 단일 종목 데이터 수집 (별도 트랜잭션으로 처리)
+     * 단일 종목 데이터 수집 (100일 단위로 분할하여 수집)
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public SingleStockResult collectSingleStockData(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
-        log.debug("Collecting data for {} from {} to {}", symbol, startDate, endDate);
+        long totalDays = java.time.temporal.ChronoUnit.DAYS.between(startDate.toLocalDate(), endDate.toLocalDate());
+
+        // 100일 이하면 단일 요청
+        if (totalDays <= MAX_DAYS_PER_REQUEST) {
+            return collectSingleStockDataChunk(symbol, startDate, endDate);
+        }
+
+        // 100일 초과면 분할 수집
+        log.info("Splitting {} days into chunks of {} days for {}", totalDays, MAX_DAYS_PER_REQUEST, symbol);
+
+        int totalNewRecords = 0;
+        int totalSkippedRecords = 0;
+        List<String> errors = new ArrayList<>();
+
+        LocalDateTime chunkStart = startDate;
+        while (chunkStart.isBefore(endDate)) {
+            LocalDateTime chunkEnd = chunkStart.plusDays(MAX_DAYS_PER_REQUEST);
+            if (chunkEnd.isAfter(endDate)) {
+                chunkEnd = endDate;
+            }
+
+            log.debug("Collecting chunk: {} ~ {}", chunkStart.toLocalDate(), chunkEnd.toLocalDate());
+
+            try {
+                SingleStockResult chunkResult = collectSingleStockDataChunk(symbol, chunkStart, chunkEnd);
+
+                if (chunkResult.isSuccess()) {
+                    totalNewRecords += chunkResult.getNewRecords();
+                    totalSkippedRecords += chunkResult.getSkippedRecords();
+                } else {
+                    errors.add(String.format("%s~%s: %s",
+                        chunkStart.toLocalDate(), chunkEnd.toLocalDate(), chunkResult.getMessage()));
+                }
+
+                // Rate limit protection (KIS API 제한 고려)
+                Thread.sleep(200);
+
+            } catch (Exception e) {
+                errors.add(String.format("%s~%s: %s",
+                    chunkStart.toLocalDate(), chunkEnd.toLocalDate(), e.getMessage()));
+            }
+
+            chunkStart = chunkEnd.plusDays(1);
+        }
+
+        String message = errors.isEmpty() ? "성공" : "일부 실패: " + String.join(", ", errors);
+
+        return SingleStockResult.builder()
+            .success(errors.isEmpty())
+            .newRecords(totalNewRecords)
+            .skippedRecords(totalSkippedRecords)
+            .message(message)
+            .build();
+    }
+
+    /**
+     * 단일 종목 데이터 수집 - 단일 청크 (최대 100일)
+     */
+    private SingleStockResult collectSingleStockDataChunk(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
+        log.debug("Collecting data chunk for {} from {} to {}", symbol, startDate, endDate);
 
         try {
             // 기존에 저장된 날짜 목록 조회
@@ -216,7 +277,7 @@ public class DataPipelineService {
             KisChartResponse response = kisApiClient.getDailyChart(symbol, startDate, endDate);
 
             if (response == null || response.getOutput2() == null || response.getOutput2().isEmpty()) {
-                log.warn("No data received from KIS API for {}", symbol);
+                log.warn("No data received from KIS API for {} ({} ~ {})", symbol, startDate.toLocalDate(), endDate.toLocalDate());
                 return SingleStockResult.builder()
                     .success(true)
                     .newRecords(0)
@@ -290,7 +351,7 @@ public class DataPipelineService {
     }
 
     /**
-     * 종목별 데이터 현황 조회
+     * 종목별 데이터 현황 조회 (갭 감지 및 신뢰도 포함)
      */
     @Transactional(readOnly = true)
     public StockDataStatus getStockDataStatus(String symbol) {
@@ -299,6 +360,35 @@ public class DataPipelineService {
         long totalCount = candleHistoryRepository.countBySymbol(symbol);
         Set<LocalDate> existingDates = candleHistoryRepository.findDistinctDatesBySymbol(symbol);
 
+        // 갭(빠진 거래일) 감지
+        List<LocalDate> missingDates = new ArrayList<>();
+        int expectedTradingDays = 0;
+        double completenessRate = 0.0;
+        String reliabilityLevel = "UNKNOWN";
+
+        if (minTime != null && maxTime != null) {
+            missingDates = findMissingTradingDays(existingDates, minTime.toLocalDate(), maxTime.toLocalDate());
+
+            // 예상 거래일 수 계산 (주말 제외)
+            expectedTradingDays = countTradingDays(minTime.toLocalDate(), maxTime.toLocalDate());
+
+            // 완결성 비율 계산
+            if (expectedTradingDays > 0) {
+                completenessRate = ((double) (expectedTradingDays - missingDates.size()) / expectedTradingDays) * 100;
+            }
+
+            // 신뢰도 레벨 결정
+            if (completenessRate >= 99.0) {
+                reliabilityLevel = "HIGH";      // 99% 이상: 높은 신뢰도
+            } else if (completenessRate >= 95.0) {
+                reliabilityLevel = "MEDIUM";    // 95-99%: 중간 신뢰도
+            } else if (completenessRate >= 80.0) {
+                reliabilityLevel = "LOW";       // 80-95%: 낮은 신뢰도
+            } else {
+                reliabilityLevel = "UNRELIABLE"; // 80% 미만: 신뢰 불가
+            }
+        }
+
         return StockDataStatus.builder()
             .symbol(symbol)
             .hasData(minTime != null)
@@ -306,7 +396,227 @@ public class DataPipelineService {
             .maxDate(maxTime != null ? maxTime.toLocalDate() : null)
             .totalDays((int) totalCount)
             .existingDates(existingDates)
+            .missingDates(missingDates)
+            .hasGaps(!missingDates.isEmpty())
+            .gapCount(missingDates.size())
+            .expectedTradingDays(expectedTradingDays)
+            .completenessRate(Math.round(completenessRate * 100.0) / 100.0)  // 소수점 2자리
+            .reliabilityLevel(reliabilityLevel)
             .build();
+    }
+
+    /**
+     * 두 날짜 사이의 거래일 수 계산 (주말 제외)
+     */
+    private int countTradingDays(LocalDate startDate, LocalDate endDate) {
+        int count = 0;
+        LocalDate current = startDate;
+
+        while (!current.isAfter(endDate)) {
+            java.time.DayOfWeek dayOfWeek = current.getDayOfWeek();
+            boolean isWeekend = dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;
+
+            if (!isWeekend) {
+                count++;
+            }
+            current = current.plusDays(1);
+        }
+
+        return count;
+    }
+
+    /**
+     * 빠진 거래일 찾기 (주말 제외)
+     */
+    private List<LocalDate> findMissingTradingDays(Set<LocalDate> existingDates, LocalDate startDate, LocalDate endDate) {
+        List<LocalDate> missingDates = new ArrayList<>();
+        LocalDate current = startDate;
+
+        while (!current.isAfter(endDate)) {
+            // 주말 제외 (토요일=6, 일요일=7)
+            java.time.DayOfWeek dayOfWeek = current.getDayOfWeek();
+            boolean isWeekend = dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;
+
+            if (!isWeekend && !existingDates.contains(current)) {
+                missingDates.add(current);
+            }
+            current = current.plusDays(1);
+        }
+
+        return missingDates;
+    }
+
+    /**
+     * 빠진 날짜(갭)만 수집
+     */
+    public CollectionResult collectMissingDates(String symbol) {
+        log.info("Collecting MISSING dates for {}", symbol);
+
+        StockDataStatus status = getStockDataStatus(symbol);
+
+        if (!status.isHasData()) {
+            return CollectionResult.builder()
+                .success(false)
+                .message("데이터가 없습니다. 먼저 기본 데이터를 수집해주세요.")
+                .build();
+        }
+
+        if (!status.isHasGaps()) {
+            return CollectionResult.builder()
+                .success(true)
+                .totalStocks(1)
+                .successCount(1)
+                .newDataCount(0)
+                .message("빠진 날짜가 없습니다.")
+                .build();
+        }
+
+        List<LocalDate> missingDates = status.getMissingDates();
+        log.info("Found {} missing dates for {}: {}", missingDates.size(), symbol, missingDates);
+
+        int newDataCount = 0;
+        int failCount = 0;
+        List<String> processedDates = new ArrayList<>();
+        List<String> failedDates = new ArrayList<>();
+
+        // 빠진 날짜들을 연속 구간으로 그룹화하여 수집
+        List<DateRange> ranges = groupConsecutiveDates(missingDates);
+
+        for (DateRange range : ranges) {
+            try {
+                SingleStockResult result = collectSingleStockData(
+                    symbol,
+                    range.getStart().atStartOfDay(),
+                    range.getEnd().atTime(23, 59, 59)
+                );
+
+                if (result.isSuccess()) {
+                    newDataCount += result.getNewRecords();
+                    processedDates.add(String.format("%s ~ %s: %d건",
+                        range.getStart(), range.getEnd(), result.getNewRecords()));
+                } else {
+                    failCount++;
+                    failedDates.add(String.format("%s ~ %s: %s",
+                        range.getStart(), range.getEnd(), result.getMessage()));
+                }
+
+                // Rate limit
+                Thread.sleep(200);
+
+            } catch (Exception e) {
+                failCount++;
+                failedDates.add(String.format("%s ~ %s: %s",
+                    range.getStart(), range.getEnd(), e.getMessage()));
+            }
+        }
+
+        String message = String.format("갭 수집 완료 - %d개 구간 처리, 신규 데이터: %d건",
+            ranges.size(), newDataCount);
+
+        return CollectionResult.builder()
+            .success(failCount == 0)
+            .totalStocks(1)
+            .successCount(failCount == 0 ? 1 : 0)
+            .failCount(failCount)
+            .newDataCount(newDataCount)
+            .processedSymbols(processedDates)
+            .failedSymbols(failedDates)
+            .message(message)
+            .build();
+    }
+
+    /**
+     * 선택한 종목들의 빠진 날짜(갭)만 수집
+     */
+    public CollectionResult collectMissingDatesForSymbols(List<String> symbols) {
+        log.info("Collecting MISSING dates for {} symbols", symbols.size());
+
+        int totalNewData = 0;
+        int successCount = 0;
+        int failCount = 0;
+        List<String> processedSymbols = new ArrayList<>();
+        List<String> failedSymbols = new ArrayList<>();
+
+        for (String symbol : symbols) {
+            try {
+                CollectionResult result = collectMissingDates(symbol);
+
+                if (result.isSuccess()) {
+                    successCount++;
+                    totalNewData += result.getNewDataCount();
+                    processedSymbols.add(String.format("%s - 신규 %d건", symbol, result.getNewDataCount()));
+                } else {
+                    failCount++;
+                    failedSymbols.add(symbol + "(" + result.getMessage() + ")");
+                }
+
+            } catch (Exception e) {
+                failCount++;
+                failedSymbols.add(symbol + "(" + e.getMessage() + ")");
+            }
+        }
+
+        String message = String.format("갭 수집 완료 - 성공: %d, 실패: %d, 신규 데이터: %d건",
+            successCount, failCount, totalNewData);
+
+        return CollectionResult.builder()
+            .success(failCount == 0)
+            .totalStocks(symbols.size())
+            .successCount(successCount)
+            .failCount(failCount)
+            .newDataCount(totalNewData)
+            .processedSymbols(processedSymbols)
+            .failedSymbols(failedSymbols)
+            .message(message)
+            .build();
+    }
+
+    /**
+     * 연속 날짜들을 구간으로 그룹화
+     */
+    private List<DateRange> groupConsecutiveDates(List<LocalDate> dates) {
+        if (dates.isEmpty()) {
+            return List.of();
+        }
+
+        List<LocalDate> sortedDates = new ArrayList<>(dates);
+        Collections.sort(sortedDates);
+
+        List<DateRange> ranges = new ArrayList<>();
+        LocalDate rangeStart = sortedDates.get(0);
+        LocalDate rangeEnd = sortedDates.get(0);
+
+        for (int i = 1; i < sortedDates.size(); i++) {
+            LocalDate current = sortedDates.get(i);
+
+            // 주말을 고려하여 연속 여부 판단 (최대 3일 간격까지 연속으로 처리)
+            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(rangeEnd, current);
+
+            if (daysBetween <= 3) {
+                // 연속 구간 확장
+                rangeEnd = current;
+            } else {
+                // 새 구간 시작
+                ranges.add(new DateRange(rangeStart, rangeEnd));
+                rangeStart = current;
+                rangeEnd = current;
+            }
+        }
+
+        // 마지막 구간 추가
+        ranges.add(new DateRange(rangeStart, rangeEnd));
+
+        return ranges;
+    }
+
+    /**
+     * 날짜 구간 DTO
+     */
+    @Getter
+    @RequiredArgsConstructor
+    public static class DateRange {
+        private final LocalDate start;
+        private final LocalDate end;
     }
 
     /**
@@ -516,5 +826,11 @@ public class DataPipelineService {
         private LocalDate maxDate;
         private int totalDays;
         private Set<LocalDate> existingDates;
+        private List<LocalDate> missingDates;
+        private boolean hasGaps;
+        private int gapCount;
+        private int expectedTradingDays;      // 예상 거래일 수 (주말 제외)
+        private double completenessRate;       // 완결성 비율 (%)
+        private String reliabilityLevel;       // HIGH, MEDIUM, LOW, UNRELIABLE
     }
 }

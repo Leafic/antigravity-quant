@@ -49,8 +49,8 @@ export const api = {
     },
 
     // Candles
-    getCandles: async (symbol: string, type: string = 'daily'): Promise<any[]> => {
-        const res = await fetch(`${API_BASE_URL}/candles?symbol=${symbol}&type=${type}`);
+    getCandles: async (symbol: string, type: string = 'daily', days: number = 365): Promise<any[]> => {
+        const res = await fetch(`${API_BASE_URL}/candles?symbol=${symbol}&type=${type}&days=${days}`);
         return res.json();
     },
     getDataRange: async (symbol: string): Promise<any> => {
@@ -119,6 +119,20 @@ export const api = {
         const res = await fetch(`${API_BASE_URL}/data-pipeline/status/${symbol}`);
         return res.json();
     },
+    collectGaps: async (symbol: string): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/collect-gaps/${symbol}`, {
+            method: 'POST'
+        });
+        return res.json();
+    },
+    collectGapsForSymbols: async (symbols: string[]): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/collect-gaps`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(symbols)
+        });
+        return res.json();
+    },
 
     // Scheduled Stocks Management
     getScheduledStocks: async (): Promise<any[]> => {
@@ -147,7 +161,12 @@ export const api = {
         const res = await fetch(`${API_BASE_URL}/scheduled-stocks/${id}`, {
             method: 'DELETE'
         });
-        return res.json();
+        if (!res.ok) {
+            throw new Error(`삭제 실패: ${res.status}`);
+        }
+        // DELETE 응답이 비어있을 수 있으므로 체크
+        const text = await res.text();
+        return text ? JSON.parse(text) : { success: true };
     },
 
     // Stock Master Sync
