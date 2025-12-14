@@ -24,13 +24,37 @@ public class CandleController {
     @GetMapping
     public ResponseEntity<List<CandleDto>> getCandles(
             @RequestParam String symbol,
-            @RequestParam(defaultValue = "daily") String type) {
+            @RequestParam(defaultValue = "daily") String type,
+            @RequestParam(defaultValue = "365") int days) {
 
         if ("minute".equalsIgnoreCase(type)) {
             return getMinuteCandles(symbol);
         }
 
-        // Default: Daily
+        // DB에서 저장된 데이터 조회 (기본: 최근 365일)
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = endDate.minusDays(days);
+
+        var dbCandles = candleHistoryRepository.findBySymbolAndTimeBetween(symbol, startDate, endDate);
+
+        if (!dbCandles.isEmpty()) {
+            // DB에 데이터가 있으면 DB 데이터 사용
+            List<CandleDto> candles = dbCandles.stream()
+                    .map(candle -> CandleDto.builder()
+                            .time(candle.getTime().toLocalDate().toString())
+                            .open(candle.getOpen())
+                            .high(candle.getHigh())
+                            .low(candle.getLow())
+                            .close(candle.getClose())
+                            .volume(java.math.BigDecimal.valueOf(candle.getVolume()))
+                            .build())
+                    .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
+                    .toList();
+
+            return ResponseEntity.ok(candles);
+        }
+
+        // DB에 데이터가 없으면 KIS API 호출 (fallback)
         var chartResponse = kisApiClient.getDailyChart(symbol);
 
         if (chartResponse == null || chartResponse.getOutput2() == null) {
@@ -40,7 +64,7 @@ public class CandleController {
         // Convert to DTO (Simplified for Frontend)
         List<CandleDto> candles = chartResponse.getOutput2().stream()
                 .map(this::toDto)
-                .sorted((a, b) -> a.getTime().compareTo(b.getTime())) // KIS default might be descending
+                .sorted((a, b) -> a.getTime().compareTo(b.getTime()))
                 .toList();
 
         return ResponseEntity.ok(candles);

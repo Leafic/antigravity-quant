@@ -93,6 +93,32 @@ export const api = {
         });
         return res.json();
     },
+    triggerDataCollectionInRange: async (startDate: string, endDate: string): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/collect-range?start=${startDate}&end=${endDate}`, {
+            method: 'POST'
+        });
+        return res.json();
+    },
+    triggerSelectedDataCollection: async (symbols: string[], days: number = 100): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/collect-selected?days=${days}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(symbols)
+        });
+        return res.json();
+    },
+    triggerSelectedDataCollectionInRange: async (symbols: string[], startDate: string, endDate: string): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/collect-selected-range?start=${startDate}&end=${endDate}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(symbols)
+        });
+        return res.json();
+    },
+    getStockDataStatus: async (symbol: string): Promise<any> => {
+        const res = await fetch(`${API_BASE_URL}/data-pipeline/status/${symbol}`);
+        return res.json();
+    },
 
     // Scheduled Stocks Management
     getScheduledStocks: async (): Promise<any[]> => {

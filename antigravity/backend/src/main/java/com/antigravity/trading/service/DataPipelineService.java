@@ -13,13 +13,14 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * 데이터 파이프라인 서비스
@@ -39,7 +40,6 @@ public class DataPipelineService {
      * 스케줄링 대상 종목의 일봉 데이터 수집 (활성화된 종목만)
      * @param days 수집할 일수 (기본: 100일)
      */
-    @Transactional
     public CollectionResult collectScheduledStocks(int days) {
         log.info("Starting data collection for SCHEDULED stocks (last {} days)", days);
 
@@ -55,43 +55,92 @@ public class DataPipelineService {
         LocalDateTime endDate = LocalDateTime.now();
         LocalDateTime startDate = endDate.minusDays(days);
 
+        return collectStocksInRange(scheduledStocks, startDate, endDate);
+    }
+
+    /**
+     * 스케줄링 대상 종목의 특정 기간 데이터 수집
+     */
+    public CollectionResult collectScheduledStocksInRange(LocalDate start, LocalDate end) {
+        log.info("Starting data collection for SCHEDULED stocks from {} to {}", start, end);
+
+        List<ScheduledStock> scheduledStocks = scheduledStockRepository.findByEnabledTrue();
+
+        if (scheduledStocks.isEmpty()) {
+            log.warn("No scheduled stocks found.");
+            return CollectionResult.builder()
+                .success(false)
+                .totalStocks(0)
+                .successCount(0)
+                .failCount(0)
+                .message("스케줄링된 종목이 없습니다.")
+                .build();
+        }
+
+        log.info("Found {} scheduled stocks to process", scheduledStocks.size());
+
+        LocalDateTime startDateTime = start.atStartOfDay();
+        LocalDateTime endDateTime = end.atTime(23, 59, 59);
+
+        return collectStocksInRange(scheduledStocks, startDateTime, endDateTime);
+    }
+
+    /**
+     * 종목 목록에 대해 특정 기간 데이터 수집 (공통 로직)
+     */
+    private CollectionResult collectStocksInRange(List<ScheduledStock> stocks, LocalDateTime startDate, LocalDateTime endDate) {
         int successCount = 0;
         int failCount = 0;
+        int skippedCount = 0;
+        int newDataCount = 0;
         List<String> processedSymbols = new ArrayList<>();
         List<String> failedSymbols = new ArrayList<>();
 
-        for (ScheduledStock scheduledStock : scheduledStocks) {
+        for (ScheduledStock stock : stocks) {
             try {
-                collectStockData(scheduledStock.getSymbol(), days);
-                successCount++;
-                processedSymbols.add(scheduledStock.getSymbol() + "(" + scheduledStock.getName() + ")");
-                log.info("✓ Collected data for {} ({}) - Progress: {}/{}",
-                    scheduledStock.getName(), scheduledStock.getSymbol(),
-                    successCount + failCount, scheduledStocks.size());
+                SingleStockResult result = collectSingleStockData(stock.getSymbol(), startDate, endDate);
+
+                if (result.isSuccess()) {
+                    successCount++;
+                    newDataCount += result.getNewRecords();
+                    processedSymbols.add(String.format("%s(%s) - 신규 %d건",
+                        stock.getSymbol(), stock.getName(), result.getNewRecords()));
+
+                    log.info("✓ {} ({}) - 신규: {}건, 스킵: {}건",
+                        stock.getName(), stock.getSymbol(),
+                        result.getNewRecords(), result.getSkippedRecords());
+                } else {
+                    failCount++;
+                    failedSymbols.add(stock.getSymbol() + "(" + result.getMessage() + ")");
+                }
 
                 // Rate limit protection (KIS API 제한 고려)
-                Thread.sleep(200); // 200ms 대기
+                Thread.sleep(200);
 
             } catch (Exception e) {
                 failCount++;
-                failedSymbols.add(scheduledStock.getSymbol() + "(" + e.getMessage() + ")");
+                failedSymbols.add(stock.getSymbol() + "(" + e.getMessage() + ")");
                 log.error("✗ Failed to collect data for {} ({}): {}",
-                    scheduledStock.getName(), scheduledStock.getSymbol(), e.getMessage());
+                    stock.getName(), stock.getSymbol(), e.getMessage());
             }
         }
 
-        log.info("Scheduled stock data collection completed. Success: {}, Failed: {}, Total: {}",
-            successCount, failCount, scheduledStocks.size());
+        String message = String.format("수집 완료 - 성공: %d, 실패: %d, 신규 데이터: %d건",
+            successCount, failCount, newDataCount);
+
+        log.info(message);
 
         return CollectionResult.builder()
             .success(failCount == 0)
-            .totalStocks(scheduledStocks.size())
+            .totalStocks(stocks.size())
             .successCount(successCount)
             .failCount(failCount)
+            .newDataCount(newDataCount)
             .startDate(startDate)
             .endDate(endDate)
             .processedSymbols(processedSymbols)
             .failedSymbols(failedSymbols)
+            .message(message)
             .build();
     }
 
@@ -99,7 +148,6 @@ public class DataPipelineService {
      * 모든 종목의 일봉 데이터 수집 (관리자 전용)
      * @param days 수집할 일수 (기본: 100일)
      */
-    @Transactional
     public CollectionResult collectAllStockData(int days) {
         log.info("Starting data collection for ALL stocks (last {} days)", days);
 
@@ -111,19 +159,22 @@ public class DataPipelineService {
 
         int successCount = 0;
         int failCount = 0;
+        int newDataCount = 0;
         List<String> processedSymbols = new ArrayList<>();
         List<String> failedSymbols = new ArrayList<>();
 
         for (StockMaster stock : stocks) {
             try {
-                collectStockData(stock.getCode(), days);
-                successCount++;
-                processedSymbols.add(stock.getCode() + "(" + stock.getName() + ")");
-                log.info("✓ Collected data for {} ({}) - Progress: {}/{}",
-                    stock.getName(), stock.getCode(), successCount + failCount, stocks.size());
+                SingleStockResult result = collectSingleStockData(stock.getCode(), startDate, endDate);
 
-                // Rate limit protection (KIS API 제한 고려)
-                Thread.sleep(200); // 200ms 대기
+                if (result.isSuccess()) {
+                    successCount++;
+                    newDataCount += result.getNewRecords();
+                    processedSymbols.add(stock.getCode() + "(" + stock.getName() + ")");
+                }
+
+                // Rate limit protection
+                Thread.sleep(200);
 
             } catch (Exception e) {
                 failCount++;
@@ -133,14 +184,15 @@ public class DataPipelineService {
             }
         }
 
-        log.info("Data collection completed. Success: {}, Failed: {}, Total: {}",
-            successCount, failCount, stocks.size());
+        log.info("Data collection completed. Success: {}, Failed: {}, New Data: {}",
+            successCount, failCount, newDataCount);
 
         return CollectionResult.builder()
             .success(failCount == 0)
             .totalStocks(stocks.size())
             .successCount(successCount)
             .failCount(failCount)
+            .newDataCount(newDataCount)
             .startDate(startDate)
             .endDate(endDate)
             .processedSymbols(processedSymbols)
@@ -149,41 +201,84 @@ public class DataPipelineService {
     }
 
     /**
-     * 특정 종목의 일봉 데이터 수집
-     * @param symbol 종목코드
-     * @param days 수집할 일수
+     * 단일 종목 데이터 수집 (별도 트랜잭션으로 처리)
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public SingleStockResult collectSingleStockData(String symbol, LocalDateTime startDate, LocalDateTime endDate) {
+        log.debug("Collecting data for {} from {} to {}", symbol, startDate, endDate);
+
+        try {
+            // 기존에 저장된 날짜 목록 조회
+            Set<LocalDate> existingDates = candleHistoryRepository.findDistinctDatesBySymbol(symbol);
+            log.debug("Existing dates for {}: {} days", symbol, existingDates.size());
+
+            // KIS API에서 데이터 가져오기
+            KisChartResponse response = kisApiClient.getDailyChart(symbol, startDate, endDate);
+
+            if (response == null || response.getOutput2() == null || response.getOutput2().isEmpty()) {
+                log.warn("No data received from KIS API for {}", symbol);
+                return SingleStockResult.builder()
+                    .success(true)
+                    .newRecords(0)
+                    .skippedRecords(0)
+                    .message("API에서 데이터 없음")
+                    .build();
+            }
+
+            List<CandleHistory> newCandles = new ArrayList<>();
+            int skippedCount = 0;
+
+            for (KisChartResponse.Output2 output : response.getOutput2()) {
+                // 날짜 파싱
+                String dateStr = output.getStckBsopDate();
+                LocalDate candleDate = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+                // 이미 존재하는 날짜면 스킵
+                if (existingDates.contains(candleDate)) {
+                    skippedCount++;
+                    continue;
+                }
+
+                CandleHistory candle = convertToCandle(symbol, output);
+                newCandles.add(candle);
+            }
+
+            // 신규 데이터만 저장
+            if (!newCandles.isEmpty()) {
+                candleHistoryRepository.saveAll(newCandles);
+                log.info("Saved {} new candles for {} (skipped {} existing)",
+                    newCandles.size(), symbol, skippedCount);
+            } else {
+                log.debug("No new data to save for {} (all {} records already exist)",
+                    symbol, skippedCount);
+            }
+
+            return SingleStockResult.builder()
+                .success(true)
+                .newRecords(newCandles.size())
+                .skippedRecords(skippedCount)
+                .message("성공")
+                .build();
+
+        } catch (Exception e) {
+            log.error("Error collecting data for {}: {}", symbol, e.getMessage());
+            return SingleStockResult.builder()
+                .success(false)
+                .newRecords(0)
+                .skippedRecords(0)
+                .message(e.getMessage())
+                .build();
+        }
+    }
+
+    /**
+     * 특정 종목의 일봉 데이터 수집 (레거시 호환용)
      */
     @Transactional
     public void collectStockData(String symbol, int days) {
         LocalDateTime endDate = LocalDateTime.now();
         LocalDateTime startDate = endDate.minusDays(days);
-
-        log.debug("Collecting data for {} from {} to {}", symbol, startDate, endDate);
-
-        // KIS API에서 데이터 가져오기
-        KisChartResponse response = kisApiClient.getDailyChart(symbol, startDate, endDate);
-
-        if (response == null || response.getOutput2() == null || response.getOutput2().isEmpty()) {
-            log.warn("No data received from KIS API for {}", symbol);
-            return;
-        }
-
-        List<CandleHistory> candles = new ArrayList<>();
-
-        for (KisChartResponse.Output2 output : response.getOutput2()) {
-            CandleHistory candle = convertToCandle(symbol, output);
-            candles.add(candle);
-        }
-
-        // 기존 데이터 삭제 후 새로 저장 (Upsert 대신 Replace 전략)
-        candleHistoryRepository.deleteAll(
-            candleHistoryRepository.findBySymbolAndTimeBetween(symbol, startDate, endDate)
-        );
-
-        // 일괄 저장
-        candleHistoryRepository.saveAll(candles);
-
-        log.info("Saved {} candles for {}", candles.size(), symbol);
+        collectSingleStockData(symbol, startDate, endDate);
     }
 
     /**
@@ -191,41 +286,36 @@ public class DataPipelineService {
      */
     @Transactional
     public void collectStockDataRange(String symbol, LocalDateTime start, LocalDateTime end) {
-        log.info("Collecting data for {} from {} to {}", symbol, start, end);
+        collectSingleStockData(symbol, start, end);
+    }
 
-        KisChartResponse response = kisApiClient.getDailyChart(symbol, start, end);
+    /**
+     * 종목별 데이터 현황 조회
+     */
+    @Transactional(readOnly = true)
+    public StockDataStatus getStockDataStatus(String symbol) {
+        LocalDateTime minTime = candleHistoryRepository.findMinTimeBySymbol(symbol);
+        LocalDateTime maxTime = candleHistoryRepository.findMaxTimeBySymbol(symbol);
+        long totalCount = candleHistoryRepository.countBySymbol(symbol);
+        Set<LocalDate> existingDates = candleHistoryRepository.findDistinctDatesBySymbol(symbol);
 
-        if (response == null || response.getOutput2() == null || response.getOutput2().isEmpty()) {
-            log.warn("No data received from KIS API for {}", symbol);
-            return;
-        }
-
-        List<CandleHistory> candles = new ArrayList<>();
-
-        for (KisChartResponse.Output2 output : response.getOutput2()) {
-            CandleHistory candle = convertToCandle(symbol, output);
-            candles.add(candle);
-        }
-
-        // 기존 데이터와 중복 방지
-        candleHistoryRepository.deleteAll(
-            candleHistoryRepository.findBySymbolAndTimeBetween(symbol, start, end)
-        );
-
-        candleHistoryRepository.saveAll(candles);
-
-        log.info("Saved {} candles for {} (range: {} to {})",
-            candles.size(), symbol, start, end);
+        return StockDataStatus.builder()
+            .symbol(symbol)
+            .hasData(minTime != null)
+            .minDate(minTime != null ? minTime.toLocalDate() : null)
+            .maxDate(maxTime != null ? maxTime.toLocalDate() : null)
+            .totalDays((int) totalCount)
+            .existingDates(existingDates)
+            .build();
     }
 
     /**
      * KIS API 응답을 CandleHistory 엔티티로 변환
      */
     private CandleHistory convertToCandle(String symbol, KisChartResponse.Output2 output) {
-        // 날짜 파싱 (yyyyMMdd → LocalDateTime)
-        String dateStr = output.getStckBsopDate(); // "20231201"
+        String dateStr = output.getStckBsopDate();
         LocalDateTime time = LocalDateTime.parse(
-            dateStr + "153000", // 15:30:00 (장 마감 시간)
+            dateStr + "153000",
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
         );
 
@@ -237,20 +327,18 @@ public class DataPipelineService {
             .low(new BigDecimal(output.getStckLwpr()))
             .close(new BigDecimal(output.getStckClpr()))
             .volume(Long.parseLong(output.getAcmlVol()))
-            // ma20, ma60은 나중에 계산하여 업데이트
             .build();
     }
 
     /**
      * 보조지표 계산 및 업데이트 (MA20, MA60 등)
-     * 데이터 수집 후 별도로 실행
      */
     @Transactional
     public void calculateIndicators(String symbol) {
         log.info("Calculating indicators for {}", symbol);
 
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = endDate.minusMonths(6); // 6개월치
+        LocalDateTime startDate = endDate.minusMonths(6);
 
         List<CandleHistory> candles = candleHistoryRepository
             .findBySymbolAndTimeBetween(symbol, startDate, endDate);
@@ -260,13 +348,11 @@ public class DataPipelineService {
             return;
         }
 
-        // 시간순 정렬
         candles.sort((a, b) -> a.getTime().compareTo(b.getTime()));
 
         for (int i = 0; i < candles.size(); i++) {
             CandleHistory candle = candles.get(i);
 
-            // MA20 계산
             if (i >= 19) {
                 BigDecimal sum20 = BigDecimal.ZERO;
                 for (int j = i - 19; j <= i; j++) {
@@ -275,7 +361,6 @@ public class DataPipelineService {
                 candle.setMa20(sum20.divide(new BigDecimal(20), 4, BigDecimal.ROUND_HALF_UP));
             }
 
-            // MA60 계산
             if (i >= 59) {
                 BigDecimal sum60 = BigDecimal.ZERO;
                 for (int j = i - 59; j <= i; j++) {
@@ -285,7 +370,6 @@ public class DataPipelineService {
             }
         }
 
-        // 일괄 업데이트
         candleHistoryRepository.saveAll(candles);
         log.info("Updated indicators for {} candles of {}", candles.size(), symbol);
     }
@@ -312,6 +396,97 @@ public class DataPipelineService {
     }
 
     /**
+     * 선택한 종목들만 데이터 수집 (최근 N일)
+     */
+    public CollectionResult collectSelectedStocks(List<String> symbols, int days) {
+        log.info("Starting data collection for {} SELECTED stocks (last {} days)", symbols.size(), days);
+
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = endDate.minusDays(days);
+
+        return collectSymbolsInRange(symbols, startDate, endDate);
+    }
+
+    /**
+     * 선택한 종목들만 특정 기간 데이터 수집
+     */
+    public CollectionResult collectSelectedStocksInRange(List<String> symbols, LocalDate start, LocalDate end) {
+        log.info("Starting data collection for {} SELECTED stocks from {} to {}", symbols.size(), start, end);
+
+        LocalDateTime startDateTime = start.atStartOfDay();
+        LocalDateTime endDateTime = end.atTime(23, 59, 59);
+
+        return collectSymbolsInRange(symbols, startDateTime, endDateTime);
+    }
+
+    /**
+     * 심볼 목록에 대해 특정 기간 데이터 수집 (공통 로직)
+     */
+    private CollectionResult collectSymbolsInRange(List<String> symbols, LocalDateTime startDate, LocalDateTime endDate) {
+        int successCount = 0;
+        int failCount = 0;
+        int newDataCount = 0;
+        List<String> processedSymbols = new ArrayList<>();
+        List<String> failedSymbols = new ArrayList<>();
+
+        for (String symbol : symbols) {
+            try {
+                SingleStockResult result = collectSingleStockData(symbol, startDate, endDate);
+
+                if (result.isSuccess()) {
+                    successCount++;
+                    newDataCount += result.getNewRecords();
+                    processedSymbols.add(String.format("%s - 신규 %d건", symbol, result.getNewRecords()));
+
+                    log.info("✓ {} - 신규: {}건, 스킵: {}건",
+                        symbol, result.getNewRecords(), result.getSkippedRecords());
+                } else {
+                    failCount++;
+                    failedSymbols.add(symbol + "(" + result.getMessage() + ")");
+                }
+
+                // Rate limit protection (KIS API 제한 고려)
+                Thread.sleep(200);
+
+            } catch (Exception e) {
+                failCount++;
+                failedSymbols.add(symbol + "(" + e.getMessage() + ")");
+                log.error("✗ Failed to collect data for {}: {}", symbol, e.getMessage());
+            }
+        }
+
+        String message = String.format("수집 완료 - 성공: %d, 실패: %d, 신규 데이터: %d건",
+            successCount, failCount, newDataCount);
+
+        log.info(message);
+
+        return CollectionResult.builder()
+            .success(failCount == 0)
+            .totalStocks(symbols.size())
+            .successCount(successCount)
+            .failCount(failCount)
+            .newDataCount(newDataCount)
+            .startDate(startDate)
+            .endDate(endDate)
+            .processedSymbols(processedSymbols)
+            .failedSymbols(failedSymbols)
+            .message(message)
+            .build();
+    }
+
+    /**
+     * 단일 종목 수집 결과
+     */
+    @Getter
+    @Builder
+    public static class SingleStockResult {
+        private boolean success;
+        private int newRecords;
+        private int skippedRecords;
+        private String message;
+    }
+
+    /**
      * 데이터 수집 결과 DTO
      */
     @Getter
@@ -321,9 +496,25 @@ public class DataPipelineService {
         private int totalStocks;
         private int successCount;
         private int failCount;
+        private int newDataCount;
         private LocalDateTime startDate;
         private LocalDateTime endDate;
         private List<String> processedSymbols;
         private List<String> failedSymbols;
+        private String message;
+    }
+
+    /**
+     * 종목 데이터 현황
+     */
+    @Getter
+    @Builder
+    public static class StockDataStatus {
+        private String symbol;
+        private boolean hasData;
+        private LocalDate minDate;
+        private LocalDate maxDate;
+        private int totalDays;
+        private Set<LocalDate> existingDates;
     }
 }

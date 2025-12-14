@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, Play, CheckCircle, XCircle, RefreshCw, Activity, Plus, Trash2, Power } from 'lucide-react';
+import { Calendar, Clock, Play, CheckCircle, XCircle, RefreshCw, Activity, Plus, Trash2, Power, Database, CheckSquare, Square } from 'lucide-react';
 import { api } from '../services/api';
 import { StockAutocomplete } from '../components/StockAutocomplete';
 
@@ -7,15 +7,27 @@ export function SchedulerDashboard() {
     const [status, setStatus] = useState<any>(null);
     const [history, setHistory] = useState<any[]>([]);
     const [scheduledStocks, setScheduledStocks] = useState<any[]>([]);
+    const [stockDataStatus, setStockDataStatus] = useState<{[key: string]: any}>({});
     const [loading, setLoading] = useState(true);
     const [triggering, setTriggering] = useState(false);
     const [showAddStock, setShowAddStock] = useState(false);
     const [newStock, setNewStock] = useState({ symbol: '', name: '', note: '' });
     const [collectionDays, setCollectionDays] = useState(100);
+    const [useRange, setUseRange] = useState(false);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
 
     useEffect(() => {
+        // 기본 날짜 설정 (오늘부터 100일 전)
+        const today = new Date();
+        const hundredDaysAgo = new Date(today);
+        hundredDaysAgo.setDate(today.getDate() - 100);
+        setEndDate(today.toISOString().split('T')[0]);
+        setStartDate(hundredDaysAgo.toISOString().split('T')[0]);
+
         fetchData();
-        const interval = setInterval(fetchData, 10000); // 10초마다 갱신
+        const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
     }, []);
 
@@ -29,6 +41,18 @@ export function SchedulerDashboard() {
             setStatus(statusData);
             setHistory(historyData);
             setScheduledStocks(stocksData);
+
+            // 각 종목의 데이터 현황 조회
+            const dataStatuses: {[key: string]: any} = {};
+            for (const stock of stocksData) {
+                try {
+                    const dataStatus = await api.getStockDataStatus(stock.symbol);
+                    dataStatuses[stock.symbol] = dataStatus;
+                } catch (e) {
+                    console.error(`Failed to fetch data status for ${stock.symbol}:`, e);
+                }
+            }
+            setStockDataStatus(dataStatuses);
         } catch (e) {
             console.error('Failed to fetch scheduler data:', e);
         } finally {
@@ -37,17 +61,75 @@ export function SchedulerDashboard() {
     };
 
     const handleTriggerCollection = async () => {
-        if (!confirm(`최근 ${collectionDays}일간 데이터 수집을 수동으로 실행하시겠습니까?`)) return;
+        const symbolsToCollect = Array.from(selectedSymbols);
+        const hasSelection = symbolsToCollect.length > 0;
+        const targetDesc = hasSelection
+            ? `선택된 ${symbolsToCollect.length}개 종목`
+            : '모든 활성화 종목';
 
-        setTriggering(true);
-        try {
-            await api.triggerDataCollection(collectionDays);
-            alert('데이터 수집이 시작되었습니다. 히스토리에서 확인하세요.');
-            fetchData();
-        } catch (e) {
-            alert('데이터 수집 실행 실패: ' + e);
-        } finally {
-            setTriggering(false);
+        if (useRange) {
+            if (!startDate || !endDate) {
+                alert('시작일과 종료일을 선택하세요.');
+                return;
+            }
+            if (!confirm(`${targetDesc}의 ${startDate} ~ ${endDate} 기간 데이터 수집을 실행하시겠습니까?\n(이미 있는 데이터는 건너뜁니다)`)) return;
+
+            setTriggering(true);
+            try {
+                const result = hasSelection
+                    ? await api.triggerSelectedDataCollectionInRange(symbolsToCollect, startDate, endDate)
+                    : await api.triggerDataCollectionInRange(startDate, endDate);
+                if (result.success) {
+                    alert(`데이터 수집 완료!\n신규 데이터: ${result.newDataCount}건`);
+                } else {
+                    alert(`일부 실패: ${result.message}`);
+                }
+                fetchData();
+            } catch (e) {
+                alert('데이터 수집 실행 실패: ' + e);
+            } finally {
+                setTriggering(false);
+            }
+        } else {
+            if (!confirm(`${targetDesc}의 최근 ${collectionDays}일간 데이터 수집을 실행하시겠습니까?\n(이미 있는 데이터는 건너뜁니다)`)) return;
+
+            setTriggering(true);
+            try {
+                const result = hasSelection
+                    ? await api.triggerSelectedDataCollection(symbolsToCollect, collectionDays)
+                    : await api.triggerDataCollection(collectionDays);
+                if (result.success) {
+                    alert(`데이터 수집 완료!\n신규 데이터: ${result.newDataCount || 0}건`);
+                } else {
+                    alert(`일부 실패: ${result.message || '알 수 없는 오류'}`);
+                }
+                fetchData();
+            } catch (e) {
+                alert('데이터 수집 실행 실패: ' + e);
+            } finally {
+                setTriggering(false);
+            }
+        }
+    };
+
+    const handleToggleSelect = (symbol: string) => {
+        setSelectedSymbols(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(symbol)) {
+                newSet.delete(symbol);
+            } else {
+                newSet.add(symbol);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSelectAll = () => {
+        const enabledSymbols = scheduledStocks.filter(s => s.enabled).map(s => s.symbol);
+        if (selectedSymbols.size === enabledSymbols.length) {
+            setSelectedSymbols(new Set());
+        } else {
+            setSelectedSymbols(new Set(enabledSymbols));
         }
     };
 
@@ -194,27 +276,88 @@ export function SchedulerDashboard() {
                         <RefreshCw size={16} />
                         {triggering ? '동기화 중...' : '종목 마스터 동기화'}
                     </button>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            value={collectionDays}
-                            onChange={(e) => setCollectionDays(Number(e.target.value))}
-                            min="1"
-                            max="3650"
-                            className="w-20 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-center"
-                        />
-                        <span className="text-sm text-slate-400">일</span>
-                        <button
-                            onClick={handleTriggerCollection}
-                            disabled={triggering}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-50"
-                        >
-                            <Play size={16} />
-                            {triggering ? '실행 중...' : '데이터 수집 실행'}
-                        </button>
-                    </div>
                 </div>
             </header>
+
+            {/* 데이터 수집 패널 */}
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 mb-6">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Database size={20} className="text-blue-400" />
+                    데이터 수집
+                </h2>
+
+                <div className="flex flex-wrap items-center gap-4">
+                    {/* 수집 모드 선택 */}
+                    <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                checked={!useRange}
+                                onChange={() => setUseRange(false)}
+                                className="w-4 h-4 text-blue-500"
+                            />
+                            <span className="text-sm text-slate-300">최근 N일</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                checked={useRange}
+                                onChange={() => setUseRange(true)}
+                                className="w-4 h-4 text-blue-500"
+                            />
+                            <span className="text-sm text-slate-300">기간 지정</span>
+                        </label>
+                    </div>
+
+                    {/* 최근 N일 모드 */}
+                    {!useRange && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-slate-400">최근</span>
+                            <input
+                                type="number"
+                                value={collectionDays}
+                                onChange={(e) => setCollectionDays(Number(e.target.value))}
+                                min="1"
+                                max="3650"
+                                className="w-20 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-center"
+                            />
+                            <span className="text-sm text-slate-400">일</span>
+                        </div>
+                    )}
+
+                    {/* 기간 지정 모드 */}
+                    {useRange && (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white"
+                            />
+                            <span className="text-slate-400">~</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white"
+                            />
+                        </div>
+                    )}
+
+                    <button
+                        onClick={handleTriggerCollection}
+                        disabled={triggering}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Play size={16} />
+                        {triggering ? '수집 중...' : (selectedSymbols.size > 0 ? `선택 종목(${selectedSymbols.size}) 수집` : '전체 수집')}
+                    </button>
+                </div>
+
+                <p className="mt-3 text-xs text-slate-500">
+                    * 이미 저장된 날짜의 데이터는 자동으로 건너뜁니다. 아래 종목 목록에서 수집할 종목을 선택하세요.
+                </p>
+            </div>
 
             <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 {/* 스케줄러 상태 */}
@@ -303,7 +446,32 @@ export function SchedulerDashboard() {
             {/* 스케줄링 종목 관리 */}
             <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 mb-8">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold">스케줄링 종목 관리</h2>
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-xl font-semibold">스케줄링 종목 관리</h2>
+                        {scheduledStocks.filter(s => s.enabled).length > 0 && (
+                            <button
+                                onClick={handleSelectAll}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-600 transition-all"
+                            >
+                                {selectedSymbols.size === scheduledStocks.filter(s => s.enabled).length ? (
+                                    <>
+                                        <CheckSquare size={14} />
+                                        선택 해제
+                                    </>
+                                ) : (
+                                    <>
+                                        <Square size={14} />
+                                        전체 선택
+                                    </>
+                                )}
+                            </button>
+                        )}
+                        {selectedSymbols.size > 0 && (
+                            <span className="text-sm text-blue-400">
+                                {selectedSymbols.size}개 선택됨
+                            </span>
+                        )}
+                    </div>
                     <button
                         onClick={() => setShowAddStock(!showAddStock)}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-all"
@@ -358,44 +526,95 @@ export function SchedulerDashboard() {
                 {/* 종목 목록 */}
                 <div className="space-y-2">
                     {scheduledStocks.length > 0 ? (
-                        scheduledStocks.map((stock: any) => (
-                            <div
-                                key={stock.id}
-                                className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-600 hover:bg-slate-700/50 transition-all"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <button
-                                        onClick={() => handleToggleStock(stock.id)}
-                                        className={`p-2 rounded-lg transition-all ${stock.enabled
-                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                            : 'bg-slate-600/50 text-slate-500 hover:bg-slate-600'
-                                            }`}
-                                    >
-                                        <Power size={16} />
-                                    </button>
-                                    <div>
-                                        <div className="font-medium text-slate-200">
-                                            {stock.name} <span className="text-slate-500">({stock.symbol})</span>
+                        scheduledStocks.map((stock: any) => {
+                            const dataStatus = stockDataStatus[stock.symbol];
+                            const isSelected = selectedSymbols.has(stock.symbol);
+                            return (
+                                <div
+                                    key={stock.id}
+                                    className={`flex items-center justify-between p-4 rounded-lg border transition-all cursor-pointer ${
+                                        isSelected
+                                            ? 'bg-blue-500/10 border-blue-500/50 hover:bg-blue-500/20'
+                                            : 'bg-slate-700/30 border-slate-600 hover:bg-slate-700/50'
+                                    }`}
+                                    onClick={() => stock.enabled && handleToggleSelect(stock.symbol)}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        {/* 체크박스 */}
+                                        {stock.enabled && (
+                                            <div
+                                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                                    isSelected
+                                                        ? 'bg-blue-500 border-blue-500'
+                                                        : 'border-slate-500 hover:border-slate-400'
+                                                }`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleToggleSelect(stock.symbol);
+                                                }}
+                                            >
+                                                {isSelected && (
+                                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleStock(stock.id);
+                                            }}
+                                            className={`p-2 rounded-lg transition-all ${stock.enabled
+                                                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                                                : 'bg-slate-600/50 text-slate-500 hover:bg-slate-600'
+                                                }`}
+                                        >
+                                            <Power size={16} />
+                                        </button>
+                                        <div>
+                                            <div className="font-medium text-slate-200">
+                                                {stock.name} <span className="text-slate-500">({stock.symbol})</span>
+                                            </div>
+                                            {stock.note && <div className="text-xs text-slate-400">{stock.note}</div>}
+                                            {/* 데이터 현황 표시 */}
+                                            {dataStatus && (
+                                                <div className="text-xs mt-1">
+                                                    {dataStatus.hasData ? (
+                                                        <span className="text-emerald-400">
+                                                            <Database size={12} className="inline mr-1" />
+                                                            {dataStatus.minDate} ~ {dataStatus.maxDate} ({dataStatus.totalDays}일)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-amber-400">
+                                                            <Database size={12} className="inline mr-1" />
+                                                            데이터 없음
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                        {stock.note && <div className="text-xs text-slate-400">{stock.note}</div>}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-xs px-2 py-1 rounded-full ${stock.enabled
+                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                            : 'bg-slate-600/50 text-slate-500'
+                                            }`}>
+                                            {stock.enabled ? '활성화' : '비활성화'}
+                                        </span>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteStock(stock.id, stock.name);
+                                            }}
+                                            className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xs px-2 py-1 rounded-full ${stock.enabled
-                                        ? 'bg-emerald-500/20 text-emerald-400'
-                                        : 'bg-slate-600/50 text-slate-500'
-                                        }`}>
-                                        {stock.enabled ? '활성화' : '비활성화'}
-                                    </span>
-                                    <button
-                                        onClick={() => handleDeleteStock(stock.id, stock.name)}
-                                        className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))
+                            );
+                        })
                     ) : (
                         <p className="text-center text-slate-500 py-8">
                             등록된 종목이 없습니다. 종목을 추가하여 스케줄링을 시작하세요.
