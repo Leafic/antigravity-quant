@@ -12,6 +12,8 @@ interface StockChartProps {
     };
     onTimeframeChange?: (tf: string) => void;
     markers?: { time: string; type: 'BUY' | 'SELL'; text?: string }[];
+    highlightTimestamp?: string | null;
+    onChartClick?: (time: string) => void;
 }
 
 function calculateSMA(data: { time: any; close: number }[], period: number) {
@@ -31,6 +33,8 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
             textColor = '#cbd5e1',
         } = {},
         onTimeframeChange,
+        highlightTimestamp,
+        onChartClick
     } = props;
 
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -77,10 +81,15 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
             wickDownColor: '#ef5350',
         });
 
-        // Initialize SMA Series
-        sma5Ref.current = chart.addLineSeries({ color: '#fbbf24', lineWidth: 1, title: 'SMA 5' }); // Amber
         sma20Ref.current = chart.addLineSeries({ color: '#4ade80', lineWidth: 1, title: 'SMA 20' }); // Green
         sma60Ref.current = chart.addLineSeries({ color: '#c084fc', lineWidth: 1, title: 'SMA 60' }); // Purple
+
+        chart.subscribeClick((param) => {
+            if (param.time && onChartClick) {
+                const timeStr = param.time.toString();
+                onChartClick(timeStr);
+            }
+        });
 
         window.addEventListener('resize', handleResize);
 
@@ -89,6 +98,29 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
             chart.remove();
         };
     }, []); // Run once
+
+    // ... (UseEffect for data update omitted - no changes needed there from previous step)
+
+    // Handle Highlight
+    useEffect(() => {
+        if (highlightTimestamp && chartRef.current) {
+            try {
+                const targetTime = highlightTimestamp.split('T')[0];
+                const date = new Date(targetTime);
+                const fromDate = new Date(date);
+                fromDate.setDate(date.getDate() - 30);
+                const toDate = new Date(date);
+                toDate.setDate(date.getDate() + 10);
+
+                const fromStr = fromDate.toISOString().split('T')[0] as Time;
+                const toStr = toDate.toISOString().split('T')[0] as Time;
+
+                chartRef.current.timeScale().setVisibleRange({ from: fromStr, to: toStr });
+            } catch (e) {
+                // Ignore
+            }
+        }
+    }, [highlightTimestamp]);
 
     // Update Data
     useEffect(() => {
@@ -113,7 +145,8 @@ export const StockChart: React.FC<StockChartProps> = (props) => {
                 position: m.type === 'BUY' ? 'belowBar' : 'aboveBar',
                 color: m.type === 'BUY' ? '#ef4444' : '#3b82f6',
                 shape: m.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-                text: m.text || m.type,
+                // text: m.text || m.type, // Removed text as requested
+                size: 1, // Minimal size
             }));
             // @ts-ignore
             candleSeriesRef.current.setMarkers(markers);

@@ -1,29 +1,36 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
-import { Play, Loader2, Settings } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { StockChart } from './StockChart';
-import { StrategySelect } from './StrategySelect';
-import { StockSearch } from './StockSearch';
+import { BacktestHeader } from './backtest/BacktestHeader';
+import { BacktestSettings } from './backtest/BacktestSettings';
+import { BacktestResults } from './backtest/BacktestResults';
+import { TradeList } from './backtest/TradeList';
+import { DetailLog } from './backtest/DetailLog';
 
 export const BacktestPanel: React.FC = () => {
+    // State
     const [symbol, setSymbol] = useState('005930');
-    const [start, setStart] = useState('2023-01-01T00:00:00');
-    const [end, setEnd] = useState('2023-12-31T23:59:59');
-    const [strategyId, setStrategyId] = useState('');
+    const [start, setStart] = useState('2025-01-01T00:00:00');
+    const [end, setEnd] = useState('2025-12-31T23:59:59');
+    const [strategyId, setStrategyId] = useState('S4_Ensemble'); // Default S4
     const [params, setParams] = useState('{}');
+    // Result
     const [result, setResult] = useState<any>(null);
     const [loading, setLoading] = useState(false);
-    const [showParams, setShowParams] = useState(false);
+    // UI Interaction
+    const [highlightTimestamp, setHighlightTimestamp] = useState<string | null>(null);
 
     const handleRun = async () => {
         setLoading(true);
         try {
-            // Append seconds if missing (common with datetime-local)
             const fmtStart = start.length === 16 ? start + ':00' : start;
             const fmtEnd = end.length === 16 ? end + ':59' : end;
 
             const data = await api.runBacktest(symbol, fmtStart, fmtEnd, strategyId, params);
             setResult(data);
+            // reset highlight
+            setHighlightTimestamp(null);
         } catch (error) {
             console.error(error);
             alert('백테스트 실패. 콘솔을 확인하세요.');
@@ -32,63 +39,99 @@ export const BacktestPanel: React.FC = () => {
         }
     };
 
+    const handleReset = () => {
+        setResult(null);
+        setHighlightTimestamp(null);
+    };
+
     const handleStrategySelect = (id: string, defaultParams: string) => {
         setStrategyId(id);
         setParams(defaultParams);
     };
 
+    const onHoverTrade = (_time: string | null) => {
+        // Implementation for hover highlight if needed later
+    };
+
+    const onClickTrade = (time: string) => {
+        setHighlightTimestamp(time);
+    };
+
+    const onChartClick = (time: string) => {
+        setHighlightTimestamp(time);
+    };
+
+    // Calculate period days for header
+    let periodStr = "";
+    if (start && end) {
+        periodStr = `${start.substring(0, 10)} ~ ${end.substring(0, 10)}`;
+    }
+
     return (
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold mb-4 text-slate-300 flex items-center gap-2">
-                <Play size={20} className="text-blue-400" />
-                백테스트 시뮬레이터 (유니버스 시나리오 매매)
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <StockSearch selectedCode={symbol} onSelect={setSymbol} />
-                <StrategySelect selectedId={strategyId} onSelect={handleStrategySelect} />
+        <div className="bg-slate-800 rounded-xl p-0 border border-slate-700 flex flex-col h-full overflow-hidden relative">
+            {/* Header (Always Visible) */}
+            <div className="p-4 border-b border-slate-700 bg-slate-800 z-20">
+                <BacktestHeader
+                    symbolName={symbol} // ideally fetch name but code is ok for now
+                    strategyName={strategyId}
+                    period={periodStr}
+                    onReset={result ? handleReset : undefined}
+                />
             </div>
 
-            {showParams && (
-                <div className="mb-4">
-                    <label className="block text-xs text-slate-400 mb-1">전략 파라미터 (JSON)</label>
-                    <textarea
-                        value={params}
-                        onChange={(e) => setParams(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs font-mono h-20"
-                    />
-                </div>
-            )}
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar pb-20">
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                    <label className="block text-xs text-slate-400 mb-1">시작일 (Start)</label>
-                    <input
-                        type="datetime-local"
-                        value={start}
-                        onChange={(e) => setStart(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm"
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs text-slate-400 mb-1">종료일 (End)</label>
-                    <input
-                        type="datetime-local"
-                        value={end}
-                        onChange={(e) => setEnd(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm"
-                    />
-                </div>
+                {/* Section A: Settings */}
+                <BacktestSettings
+                    symbol={symbol} setSymbol={setSymbol}
+                    strategyId={strategyId} setStrategyId={setStrategyId}
+                    params={params} setParams={setParams}
+                    start={start} setStart={setStart}
+                    end={end} setEnd={setEnd}
+                    handleStrategySelect={handleStrategySelect}
+                />
+
+                {/* Spacer / Divider */}
+                <div className="h-4"></div>
+
+                {/* Section B/C/D: Results (Only if result exists) */}
+                {result && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Section B: Results KPI */}
+                        <BacktestResults result={result} />
+
+                        {/* Chart Area */}
+                        <div className="h-[350px] bg-slate-900/50 rounded-lg border border-slate-700 p-2 relative">
+                            {/* @ts-ignore */}
+                            <StockChart
+                                data={result.candles}
+                                markers={result.trades?.map((t: any) => ({
+                                    time: t.time,
+                                    type: t.type,
+                                    text: t.reason
+                                }))}
+                                highlightTimestamp={highlightTimestamp}
+                                onChartClick={onChartClick}
+                            />
+                        </div>
+
+                        {/* Section C: Trade List */}
+                        <TradeList
+                            trades={result.trades}
+                            onHoverTrade={onHoverTrade}
+                            onClickTrade={onClickTrade}
+                            highlightTimestamp={highlightTimestamp}
+                        />
+
+                        {/* Section D: Detail Log */}
+                        <DetailLog trades={result.trades} />
+                    </div>
+                )}
             </div>
 
-            <div className="flex gap-2">
-                <button
-                    onClick={() => setShowParams(!showParams)}
-                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
-                    title="파라미터 설정"
-                >
-                    <Settings size={18} />
-                </button>
+            {/* Fixed Footer: Run Button */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-slate-800/95 backdrop-blur border-t border-slate-700 z-30">
                 <button
                     onClick={handleRun}
                     disabled={loading}

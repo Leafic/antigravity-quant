@@ -30,23 +30,38 @@ public class TelegramNotificationService implements NotificationService {
 
     @Override
     public void sendTradeNotification(String type, String symbol, String price, String quantity, String reason) {
-        // Cannot create full snapshot here. Send simplified message or log warning.
-        // We will just fetch CURRENT snapshot for both before/after (imprecise but
-        // prevents crash)
-        // Or just format a simple message using broadcastPrivate.
         String emoji = "BUY".equalsIgnoreCase(type) ? "🚀" : "👋";
-        String msg = String.format("%s [LEGACY] %s %s %s주 @ %s\n%s", emoji, type, symbol, quantity, price, reason);
+        String sideKo = "BUY".equalsIgnoreCase(type) ? "매수" : "매도";
+
+        // Format: [PAPER홍길동/모의-1번계좌] 매수 체결
+        String title = String.format("[%s%s/%s] %s 체결",
+                "PAPER", // Assuming paper for now or check config
+                accountOwner, accountAlias, sideKo);
+
+        String body = String.format("%s(%s) %s주 @ %s원\n이유: %s\n시간: %s",
+                symbol, "CODE", quantity, price, reason,
+                java.time.LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+        String msg = String.format("%s %s\n\n%s", emoji, title, body);
         broadcastPrivate(msg);
     }
 
     @Value("${telegram.bot-token}")
     private String botToken;
 
-    @Value("${telegram.group-chat-id:}")
+    @Value("${telegram.group-chat-id}")
     private String groupChatId;
 
     @Value("${telegram.private-chat-ids:}")
     private String privateChatIdsRaw; // Comma separated
+
+    // Account Info
+    @Value("${kis.account-owner:홍길동}")
+    private String accountOwner;
+
+    @Value("${kis.account-alias:모의-1번계좌}")
+    private String accountAlias;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
