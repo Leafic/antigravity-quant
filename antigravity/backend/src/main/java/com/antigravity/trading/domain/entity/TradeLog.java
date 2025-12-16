@@ -78,6 +78,7 @@ public class TradeLog {
     @Column(precision = 19, scale = 4)
     private BigDecimal mae; // Max Adverse Excursion
 
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @CreatedDate
     private LocalDateTime timestamp;
 

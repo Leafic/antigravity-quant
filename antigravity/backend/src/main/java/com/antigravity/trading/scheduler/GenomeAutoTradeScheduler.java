@@ -1,76 +1,62 @@
 package com.antigravity.trading.scheduler;
 
-import com.antigravity.trading.infrastructure.api.KisApiClient;
-import com.antigravity.trading.infrastructure.notification.TelegramNotificationService;
+import com.antigravity.trading.domain.entity.AutoTradeSchedule;
+import com.antigravity.trading.repository.AutoTradeScheduleRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+
+/**
+ * Legacy Scheduler Migrator
+ * Initializes default schedules into the database for dynamic execution.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class GenomeAutoTradeScheduler {
 
-    private final KisApiClient kisApiClient;
-    private final TelegramNotificationService notificationService;
+    private final AutoTradeScheduleRepository repository;
 
-    // Genome & Company (314130)
     private static final String SYMBOL = "314130";
-    private static final String QTY = "10"; // Default Qty (Adjust as needed)
+    private static final String NAME = "지놈앤컴퍼니";
+    private static final int QTY = 10;
 
-    /**
-     * Buy at Market Open (09:00 KST)
-     * We trigger slightly after open to ensure market is active, or use Market
-     * Order ("01")
-     * Trigger at 09:00:05 KST
-     */
-    @Scheduled(cron = "5 0 9 * * MON-FRI", zone = "Asia/Seoul")
-    public void buyAtOpen() {
-        log.info("[Scheduler] Executing Buy for {} at Open", SYMBOL);
-        try {
-            // Market Order (Price "0")
-            // Logic: kisApiClient.placeOrder(SYMBOL, "BUY", "0", Integer.parseInt(QTY));
-            // Note: Ensure your KisApiClient supports "0" as market price or handles it.
-            // If not, you might need to fetch current price + buffer.
-            // Assuming "0" corresponds to Market Order in implementation logic or user
-            // rules.
+    @PostConstruct
+    public void initDefaultSchedules() {
+        log.info("[Scheduler Migrator] Checking default schedules...");
 
-            String response = kisApiClient.placeOrder(SYMBOL, "BUY", "0", Integer.parseInt(QTY));
-            boolean success = response != null && !response.isEmpty(); // Simple check
-
-            if (success) {
-                notificationService.sendTradeNotification("BUY", SYMBOL, "MARKET_OPEN", QTY, "Scheduled Open Buy");
-            } else {
-                notificationService.sendTradeNotification("ERROR", SYMBOL, "0", QTY,
-                        "Scheduled Buy Failed (Empty Response)");
-            }
-        } catch (Exception e) {
-            log.error("Failed scheduled buy", e);
-            notificationService.sendTradeNotification("ERROR", SYMBOL, "0", QTY, "Exception: " + e.getMessage());
+        // 1. Buy at Open (09:00:05) -> Dynamic: 09:00
+        if (repository.findBySymbolAndScheduleTime(SYMBOL, "09:00").isEmpty()) {
+            AutoTradeSchedule schedule = AutoTradeSchedule.builder()
+                    .symbol(SYMBOL)
+                    .name(NAME)
+                    .type(AutoTradeSchedule.TradeType.BUY)
+                    .scheduleTime("09:00")
+                    .quantity(QTY)
+                    .isActive(true)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            repository.save(schedule);
+            log.info("Initialized default BUY schedule for {} at 09:00", SYMBOL);
         }
-    }
 
-    /**
-     * Sell at Market Close (15:20 KST)
-     * Trigger at 15:19:00 KST just before close to liquidate
-     */
-    @Scheduled(cron = "0 19 15 * * MON-FRI", zone = "Asia/Seoul")
-    public void sellAtClose() {
-        log.info("[Scheduler] Executing Sell for {} at Close", SYMBOL);
-        try {
-            // Market Sell
-            String response = kisApiClient.placeOrder(SYMBOL, "SELL", "0", Integer.parseInt(QTY));
-            boolean success = response != null && !response.isEmpty();
-
-            if (success) {
-                notificationService.sendTradeNotification("SELL", SYMBOL, "MARKET_CLOSE", QTY, "Scheduled Close Sell");
-            } else {
-                notificationService.sendTradeNotification("ERROR", SYMBOL, "0", QTY, "Scheduled Sell Failed");
-            }
-        } catch (Exception e) {
-            log.error("Failed scheduled sell", e);
-            notificationService.sendTradeNotification("ERROR", SYMBOL, "0", QTY, "Exception: " + e.getMessage());
+        // 2. Buy at Close (15:19:00) - Previously Sell, then Buy, now Dynamic
+        if (repository.findBySymbolAndScheduleTime(SYMBOL, "15:19").isEmpty()) {
+            AutoTradeSchedule schedule = AutoTradeSchedule.builder()
+                    .symbol(SYMBOL)
+                    .name(NAME)
+                    .type(AutoTradeSchedule.TradeType.BUY)
+                    .scheduleTime("15:19") // 15:19 Trigger
+                    .quantity(QTY)
+                    .isActive(true)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            repository.save(schedule);
+            log.info("Initialized default BUY (Accumulation) schedule for {} at 15:19", SYMBOL);
         }
     }
 }
+

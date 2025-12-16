@@ -3,15 +3,17 @@ import { LayoutDashboard, Calendar, Database, Menu, X } from 'lucide-react';
 import { TradingDashboard } from './pages/TradingDashboard';
 import { SchedulerDashboard } from './pages/SchedulerDashboard';
 import { StockMasterPage } from './pages/StockMasterPage';
+import { PortfolioPage } from './pages/PortfolioPage';
 
 function App() {
-    const [currentPage, setCurrentPage] = useState<'trading' | 'scheduler' | 'stocks'>('trading');
+    const [currentPage, setCurrentPage] = useState<'trading' | 'scheduler' | 'stocks' | 'portfolio'>('trading');
     const [menuOpen, setMenuOpen] = useState(false);
 
     const navItems = [
         { id: 'trading', label: '트레이딩', icon: LayoutDashboard },
         { id: 'scheduler', label: '스케줄러', icon: Calendar },
         { id: 'stocks', label: '종목 관리', icon: Database },
+        { id: 'portfolio', label: '내 투자', icon: Menu },
     ];
 
     return (
@@ -73,6 +75,7 @@ function App() {
                     {currentPage === 'trading' && <TradingDashboard />}
                     {currentPage === 'scheduler' && <SchedulerDashboard />}
                     {currentPage === 'stocks' && <StockMasterPage />}
+                    {currentPage === 'portfolio' && <PortfolioPage />}
                 </div>
             </div>
 

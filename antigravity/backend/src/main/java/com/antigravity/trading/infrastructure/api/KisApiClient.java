@@ -253,8 +253,16 @@ public class KisApiClient {
      * 현재가 조회 (Mock 유지 - 실시간 시세는 웹소켓이 유리함)
      */
     public BigDecimal getCurrentPrice(String symbol) {
-        // ... (이전과 동일, 필요시 구현)
-        return new BigDecimal("70000");
+        try {
+            KisMinuteChartResponse response = getMinuteChart(symbol);
+            if (response != null && response.getOutput2() != null && !response.getOutput2().isEmpty()) {
+                String currentPriceStr = response.getOutput2().get(0).getStckPrpr();
+                return new BigDecimal(currentPriceStr);
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch current price for {}", symbol, e);
+        }
+        return BigDecimal.ZERO;
     }
 
     /**
@@ -349,9 +357,10 @@ public class KisApiClient {
         body.put("CANO", accountNo.substring(0, 8));
         body.put("ACNT_PRDT_CD", "01");
         body.put("PDNO", symbol);
-        body.put("ORD_DVSN", "00"); // 00: Limit (지정가), 01: Market (시장가)
+        String ordDvsn = "0".equals(price) ? "01" : "00"; // 00: Limit, 01: Market
+        body.put("ORD_DVSN", ordDvsn);
         body.put("ORD_QTY", String.valueOf(quantity));
-        body.put("ORD_UNPR", price); // Price (0 for Market)
+        body.put("ORD_UNPR", price);
 
         log.info("Placing {} Order for {} (Qty: {}, Price: {})", type, symbol, quantity, price);
 

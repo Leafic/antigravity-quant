@@ -6,6 +6,7 @@ import { StockAutocomplete } from '../components/StockAutocomplete';
 import { TodayTargetPanel } from '../components/TodayTargetPanel';
 import { BacktestSidebar, BacktestParams } from '../components/BacktestSidebar';
 import { AccountModal } from '../components/AccountModal';
+import { OrderFormModal } from '../components/OrderFormModal';
 
 export function TradingDashboard() {
     const [systemActive, setSystemActive] = useState<boolean | null>(null);
@@ -21,6 +22,7 @@ export function TradingDashboard() {
     // UI States
     const [showBacktestSidebar, setShowBacktestSidebar] = useState(false);
     const [showAccountModal, setShowAccountModal] = useState(false);
+    const [showOrderModal, setShowOrderModal] = useState(false);
     const [showBacktestResult, setShowBacktestResult] = useState(false);
     const [backtestResult, setBacktestResult] = useState<any>(null);
     const [isRunningBacktest, setIsRunningBacktest] = useState(false);
@@ -190,6 +192,14 @@ export function TradingDashboard() {
 
                 {/* Right: Controls */}
                 <div className="flex items-center gap-3">
+                    {/* Manual Order Button */}
+                    <button
+                        onClick={() => setShowOrderModal(true)}
+                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg shadow-blue-500/20 transition-all hover:scale-105 active:scale-95"
+                    >
+                        주문하기
+                    </button>
+
                     {/* Account Button */}
                     <button
                         onClick={() => {
@@ -385,6 +395,14 @@ export function TradingDashboard() {
                 onClose={() => setShowAccountModal(false)}
                 balance={balance}
                 holdings={holdings}
+            />
+
+            {/* Manual Order Modal */}
+            <OrderFormModal
+                isOpen={showOrderModal}
+                onClose={() => setShowOrderModal(false)}
+                initialSymbol={selectedSymbol}
+                initialName={selectedStockName}
             />
         </div>
     );
