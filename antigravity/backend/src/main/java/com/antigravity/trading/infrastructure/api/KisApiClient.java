@@ -134,7 +134,8 @@ public class KisApiClient {
 
         log.debug("Fetching account balance for {}-{}", cano, prdt);
 
-        return webClient.get()
+        try {
+            return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/uapi/domestic-stock/v1/trading/inquire-balance")
                         .queryParam("CANO", cano)
@@ -152,10 +153,19 @@ public class KisApiClient {
                 .header("authorization", "Bearer " + token)
                 .header("appkey", appKey)
                 .header("appsecret", appSecret)
-                .header("tr_id", "VTTC8434R") // 실전: TTTC8434R, 모의: VTTC8434R
+                .header("tr_id", isVirtual() ? "VTTC8434R" : "TTTC8434R")
                 .retrieve()
                 .bodyToMono(KisBalanceResponse.class)
                 .block();
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            String errorBody = e.getResponseBodyAsString();
+            log.error("KIS API Error ({}): {}", e.getStatusCode(), errorBody);
+            throw new RuntimeException("KIS API Failed: " + errorBody, e);
+        }
+    }
+
+    private boolean isVirtual() {
+        return baseUrl != null && baseUrl.contains("vts");
     }
 
     /**

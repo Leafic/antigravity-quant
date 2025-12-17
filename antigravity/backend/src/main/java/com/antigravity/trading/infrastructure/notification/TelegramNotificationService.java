@@ -57,7 +57,7 @@ public class TelegramNotificationService implements NotificationService {
     private String privateChatIdsRaw; // Comma separated
 
     // Account Info
-    @Value("${kis.account-owner:홍길동}")
+    @Value("${kis.account-owner:QuantUser}")
     private String accountOwner;
 
     @Value("${kis.account-alias:모의-1번계좌}")
