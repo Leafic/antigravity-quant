@@ -53,16 +53,27 @@ public class UniverseScreenerService {
 
     // Renamed from createTarget for clarity and to match new logic
     private void addTarget(String symbol, String name) {
-        // Default market/sector for simplified logic
-        TargetStock target = TargetStock.builder()
-                .symbol(symbol)
-                .name(name)
-                .market("KOSDAQ") // Assuming these are KOSDAQ for now or generic
-                .sector("Bio/Pharma")
-                .createdAt(LocalDateTime.now())
-                .isActive(true)
-                .build();
-        targetStockRepository.save(target);
-        log.info("Selected new target: {} ({})", name, symbol);
+        // Upsert Logic: Check if exists, if so update, else ensure new
+        targetStockRepository.findBySymbol(symbol).ifPresentOrElse(
+            existing -> {
+                existing.setActive(true);
+                existing.setName(name); // Optional: Update name if changed
+                existing.setCreatedAt(LocalDateTime.now()); // Update timestamp to show fresh selection
+                targetStockRepository.save(existing);
+                log.info("Updated existing target: {} ({})", name, symbol);
+            },
+            () -> {
+                TargetStock target = TargetStock.builder()
+                        .symbol(symbol)
+                        .name(name)
+                        .market("KOSDAQ") // Assuming these are KOSDAQ for now or generic
+                        .sector("Bio/Pharma")
+                        .createdAt(LocalDateTime.now())
+                        .isActive(true)
+                        .build();
+                targetStockRepository.save(target);
+                log.info("Selected new target: {} ({})", name, symbol);
+            }
+        );
     }
 }

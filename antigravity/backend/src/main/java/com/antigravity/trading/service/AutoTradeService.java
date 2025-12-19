@@ -20,17 +20,24 @@ public class AutoTradeService {
 
     private final AutoTradeScheduleRepository repository;
     private final OrderService orderService;
+    private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
 
     // 1분마다 실행 (0초에)
     @Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul")
     public void executeScheduledTrades() {
         LocalDateTime now = LocalDateTime.now();
         String currentTimeStr = now.format(DateTimeFormatter.ofPattern("HH:mm"));
+        String currentAccount = kisApiClient.getAccountNo();
 
-        log.debug("Checking auto-trade schedules for time: {}", currentTimeStr);
+        log.debug("Checking auto-trade schedules for time: {} (Account: {})", currentTimeStr, currentAccount);
 
-        List<AutoTradeSchedule> schedules = repository.findByIsActiveTrue();
+        if (currentAccount == null) return;
+
+        List<AutoTradeSchedule> schedules = repository.findAllByAccountNo(currentAccount);
+
         for (AutoTradeSchedule schedule : schedules) {
+            if (!Boolean.TRUE.equals(schedule.getIsActive())) continue;
+
             // 시간이 일치하고, 오늘 아직 실행되지 않았는지 확인 (단순화를 위해 마지막 실행 날짜 비교)
             // 주의: HH:mm 매칭이므로 하루에 한번만 실행되어야 함.
             if (schedule.getScheduleTime().equals(currentTimeStr)) {
@@ -79,15 +86,21 @@ public class AutoTradeService {
     }
 
     public List<AutoTradeSchedule> getAllSchedules() {
-        return repository.findAll();
+        String currentAccount = kisApiClient.getAccountNo();
+        return repository.findAllByAccountNo(currentAccount);
     }
 
     public AutoTradeSchedule createSchedule(AutoTradeSchedule schedule) {
+        schedule.setAccountNo(kisApiClient.getAccountNo());
         return repository.save(schedule);
     }
 
     public AutoTradeSchedule updateSchedule(Long id, AutoTradeSchedule updated) {
+        // TODO: Ensure ownership
         return repository.findById(id).map(existing -> {
+            if (!existing.getScheduleTime().equals(updated.getScheduleTime())) {
+                existing.setLastExecutedAt(null); // Reset execution flag if time changes
+            }
             existing.setSymbol(updated.getSymbol());
             existing.setName(updated.getName());
             existing.setType(updated.getType());

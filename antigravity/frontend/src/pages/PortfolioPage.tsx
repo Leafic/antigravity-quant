@@ -28,6 +28,7 @@ interface TargetStock {
 }
 
 import { StockAutocomplete } from '../components/StockAutocomplete';
+import { Skeleton } from '../components/ui/Skeleton';
 
 interface Schedule {
     id: number;
@@ -173,7 +174,70 @@ export function PortfolioPage() {
         return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(Number(val));
     };
 
-    if (loading) return <div className="text-white p-6">Loading data...</div>;
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <Skeleton className="h-8 w-64 mb-6" />
+                
+                {/* Skeleton Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                            <Skeleton className="h-4 w-24 mb-2" />
+                            <Skeleton className="h-8 w-32" />
+                        </div>
+                    ))}
+                </div>
+
+                {/* Skeleton Auto-Trade Settings */}
+                <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                    <div className="flex justify-between items-center mb-4">
+                        <Skeleton className="h-6 w-40" />
+                        <Skeleton className="h-8 w-20" />
+                    </div>
+                    <Skeleton className="h-10 w-full mb-4" />
+                    <div className="space-y-2">
+                        <Skeleton className="h-16 w-full" />
+                        <Skeleton className="h-16 w-full" />
+                    </div>
+                </div>
+
+                {/* Skeleton Recommendations */}
+                 <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                    <Skeleton className="h-6 w-48 mb-4" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                         {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-20 w-full" />
+                        ))}
+                    </div>
+                 </div>
+
+                {/* Skeleton Holdings Table */}
+                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                         <Skeleton className="h-6 w-40" />
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Skeleton History Table */}
+                 <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                         <Skeleton className="h-6 w-32" />
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-10 w-full" />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">

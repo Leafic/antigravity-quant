@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Power, Settings as SettingsIcon, Wallet, Menu, X } from 'lucide-react';
 import { api } from '../services/api';
+import { Skeleton } from '../components/ui/Skeleton';
 import { StockChart } from '../components/StockChart';
 import { StockAutocomplete } from '../components/StockAutocomplete';
 import { TodayTargetPanel } from '../components/TodayTargetPanel';
@@ -13,7 +14,7 @@ export function TradingDashboard() {
     const [candles, setCandles] = useState<any[]>([]);
     const [balance, setBalance] = useState<any>({ totalEvaluation: '0', deposit: '0' });
     const [holdings, setHoldings] = useState<any[]>([]);
-    const [targets, setTargets] = useState<any[]>([]);
+    const [targets, setTargets] = useState<any[] | null>(null);
     const [selectedSymbol, setSelectedSymbol] = useState('005930');
     const [selectedStockName, setSelectedStockName] = useState('삼성전자');
     const [searchInput, setSearchInput] = useState('005930'); // 검색창 입력용 별도 state
@@ -130,7 +131,7 @@ export function TradingDashboard() {
         setCandles([]);
         setBacktestResult(null);
         setShowBacktestResult(false);
-        const target = targets.find(t => t.symbol === symbol);
+        const target = targets?.find(t => t.symbol === symbol);
         setSelectedSymbol(symbol);
         setSearchInput(symbol); // 검색창에도 반영
         if (target) {
@@ -244,12 +245,24 @@ export function TradingDashboard() {
                             })) : undefined}
                         />
                     ) : (
-                        <div className="h-full flex items-center justify-center text-slate-500 bg-slate-800/50 rounded-lg border border-slate-700">
-                            <div className="text-center">
-                                <div className="text-lg mb-2">데이터 로딩중...</div>
-                                <div className="text-sm text-slate-600">
-                                    {selectedSymbol} 차트를 불러오는 중입니다
+                        <div className="h-full flex flex-col gap-4 p-4 rounded-lg border border-slate-700 bg-slate-800/20">
+                            {/* Skeleton Chart Header */}
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="flex gap-2">
+                                    <Skeleton className="h-8 w-24" />
+                                    <Skeleton className="h-8 w-24" />
                                 </div>
+                                <Skeleton className="h-8 w-32" />
+                            </div>
+                            {/* Skeleton Chart Area */}
+                            <div className="flex-1 flex items-end gap-2 px-4 pb-8">
+                                {[...Array(20)].map((_, i) => (
+                                    <Skeleton 
+                                        key={i} 
+                                        className="w-full" 
+                                        style={{ height: `${Math.random() * 60 + 20}%` }} 
+                                    />
+                                ))}
                             </div>
                         </div>
                     )}

@@ -8,4 +8,6 @@ public interface TradeLogRepository extends JpaRepository<TradeLog, Long> {
     List<TradeLog> findBySymbol(String symbol);
 
     List<TradeLog> findAllByOrderByTimestampDesc();
+
+    List<TradeLog> findAllByAccountNoOrderByTimestampDesc(String accountNo);
 }

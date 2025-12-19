@@ -16,9 +16,11 @@ import java.util.List;
 public class TradeLogController {
 
     private final TradeLogRepository tradeLogRepository;
+    private final com.antigravity.trading.infrastructure.api.KisApiClient kisApiClient;
 
     @GetMapping
     public ResponseEntity<List<TradeLog>> getTradeLogs() {
-        return ResponseEntity.ok(tradeLogRepository.findAllByOrderByTimestampDesc());
+        String currentAccount = kisApiClient.getAccountNo();
+        return ResponseEntity.ok(tradeLogRepository.findAllByAccountNoOrderByTimestampDesc(currentAccount));
     }
 }

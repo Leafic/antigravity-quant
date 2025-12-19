@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Search, Star, Database, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, Star, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { api } from '../services/api';
+import { Skeleton } from '../components/ui/Skeleton';
 
 export function StockMasterPage() {
     const [stocks, setStocks] = useState<any[]>([]);
@@ -90,10 +91,33 @@ export function StockMasterPage() {
 
     if (loading && page === 0) {
         return (
-            <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-                <div className="text-center">
-                    <Database className="animate-pulse mx-auto mb-4" size={48} />
-                    <p className="text-slate-400">로딩 중...</p>
+             <div className="min-h-screen bg-slate-900 text-white p-6">
+                {/* Skeleton Header */}
+                <div className="mb-8 border-b border-slate-700 pb-4">
+                    <Skeleton className="h-10 w-64 mb-2" />
+                    <Skeleton className="h-4 w-96 mb-6" />
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
+                         {[1, 2, 3, 4, 5].map((i) => (
+                            <div key={i} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                                <Skeleton className="h-4 w-20 mb-2" />
+                                <Skeleton className="h-8 w-32" />
+                            </div>
+                         ))}
+                    </div>
+                </div>
+
+                {/* Skeleton Filters */}
+                <div className="bg-slate-800 rounded-xl p-6 mb-6 border border-slate-700">
+                    <Skeleton className="h-10 w-full" />
+                </div>
+
+                {/* Skeleton Table */}
+                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <div className="p-4 space-y-4">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                    </div>
                 </div>
             </div>
         );

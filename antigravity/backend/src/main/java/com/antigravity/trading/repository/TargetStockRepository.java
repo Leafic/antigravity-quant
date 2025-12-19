@@ -7,4 +7,5 @@ import java.util.List;
 public interface TargetStockRepository extends JpaRepository<TargetStock, Long> {
     List<TargetStock> findByIsActiveTrue();
     boolean existsBySymbol(String symbol);
+    java.util.Optional<TargetStock> findBySymbol(String symbol);
 }

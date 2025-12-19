@@ -42,6 +42,10 @@ public class KisApiClient {
     @Value("${kis.account-no}")
     private String accountNo;
 
+    public String getAccountNo() {
+        return accountNo;
+    }
+
     @Value("${kis.base-url:https://openapivts.koreainvestment.com:29443}")
     private String baseUrl;
 
@@ -127,7 +131,26 @@ public class KisApiClient {
     /**
      * 주식 잔고 조회 (Full Response)
      */
-    public KisBalanceResponse getAccountBalance() {
+    private long lastCallTime = 0;
+    private static final long MIN_INTERVAL_MS = 500; // Enforce 500ms gap (2 requests/sec)
+
+    /**
+     * 주식 잔고 조회 (Full Response)
+     * Rate Limited to prevent 500 errors (EGW00201)
+     */
+    public synchronized KisBalanceResponse getAccountBalance() {
+        long currentTime = System.currentTimeMillis();
+        long diff = currentTime - lastCallTime;
+
+        if (diff < MIN_INTERVAL_MS) {
+            try {
+                Thread.sleep(MIN_INTERVAL_MS - diff);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastCallTime = System.currentTimeMillis();
+
         String token = getAccessToken();
         String cano = accountNo.substring(0, 8);
         String prdt = "01"; // Default product code

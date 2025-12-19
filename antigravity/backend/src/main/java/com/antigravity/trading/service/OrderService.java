@@ -32,6 +32,7 @@ public class OrderService {
                     .strategyName(strategy)
                     .reason(reason)
                     .signalCode(reason)
+                    .accountNo(kisApiClient.getAccountNo())
                     .timestamp(LocalDateTime.now())
                     .build();
             tradeLogRepository.save(tradeLog);

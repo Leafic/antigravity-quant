@@ -41,6 +41,9 @@ public class TradeLog {
     @Column(nullable = false)
     private TradeType type; // BUY, SELL
 
+    @Column(length = 20)
+    private String accountNo;
+
     @Column(length = 50)
     private String signalReason; // e.g. BREAKOUT_VOL
 

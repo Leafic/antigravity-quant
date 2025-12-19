@@ -3,6 +3,7 @@ import { Calendar, Clock, Play, CheckCircle, XCircle, RefreshCw, Activity, Plus,
 import { api } from '../services/api';
 import { StockAutocomplete } from '../components/StockAutocomplete';
 import { MissingDatesCalendar } from '../components/MissingDatesCalendar';
+import { Skeleton } from '../components/ui/Skeleton';
 
 export function SchedulerDashboard() {
     const [status, setStatus] = useState<any>(null);
@@ -382,10 +383,57 @@ export function SchedulerDashboard() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-                <div className="text-center">
-                    <RefreshCw className="animate-spin mx-auto mb-4" size={48} />
-                    <p className="text-slate-400">로딩 중...</p>
+            <div className="min-h-screen bg-slate-900 text-white p-6">
+                {/* Skeleton Header */}
+                <div className="mb-8 flex items-center justify-between border-b border-slate-700 pb-4">
+                    <div>
+                        <Skeleton className="h-9 w-64 mb-2" />
+                        <Skeleton className="h-4 w-48" />
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <Skeleton className="h-10 w-28" />
+                        <Skeleton className="h-10 w-40" />
+                    </div>
+                </div>
+
+                {/* Skeleton Data Collection Panel */}
+                <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 mb-6">
+                    <Skeleton className="h-7 w-32 mb-4" />
+                    <div className="flex flex-wrap items-center gap-4">
+                        <Skeleton className="h-5 w-24" />
+                        <Skeleton className="h-10 w-20" />
+                        <Skeleton className="h-10 w-32" />
+                        <Skeleton className="h-10 w-24" />
+                    </div>
+                    <Skeleton className="h-4 w-96 mt-3" />
+                </div>
+
+                {/* Skeleton Grid (Stats) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                            <Skeleton className="h-7 w-32 mb-4" />
+                            <div className="space-y-3">
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="h-6 w-40" />
+                                <Skeleton className="h-4 w-24 mt-2" />
+                                <Skeleton className="h-6 w-32" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Skeleton Stock List */}
+                <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                    <div className="flex justify-between items-center mb-4">
+                        <Skeleton className="h-8 w-48" />
+                        <Skeleton className="h-10 w-32" />
+                    </div>
+                    <div className="space-y-2">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                            <Skeleton key={i} className="h-20 w-full" />
+                        ))}
+                    </div>
                 </div>
             </div>
         );

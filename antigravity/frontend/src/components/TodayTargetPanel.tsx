@@ -1,4 +1,5 @@
 import { TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { Skeleton } from './ui/Skeleton';
 
 interface TargetStock {
     symbol: string;
@@ -10,12 +11,41 @@ interface TargetStock {
 }
 
 interface Props {
-    targets: TargetStock[];
+    targets: TargetStock[] | null;
     selectedSymbol: string;
     onSelectSymbol: (symbol: string) => void;
 }
 
 export function TodayTargetPanel({ targets, selectedSymbol, onSelectSymbol }: Props) {
+    if (!targets) {
+        return (
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-lg p-4 border border-slate-700/50 shadow-xl max-h-[400px] overflow-hidden">
+                <div className="flex items-center gap-2 mb-3">
+                    <Target size={18} className="text-yellow-400" />
+                    <h3 className="text-sm font-semibold text-slate-200">오늘의 종목</h3>
+                     <Skeleton className="h-4 w-8" />
+                </div>
+                <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="p-3 rounded-lg border border-slate-700/50 bg-slate-700/30">
+                            <div className="flex justify-between mb-2">
+                                <div className="space-y-1">
+                                    <Skeleton className="h-4 w-24" />
+                                    <Skeleton className="h-3 w-16" />
+                                </div>
+                                <div className="space-y-1 items-end flex flex-col">
+                                    <Skeleton className="h-4 w-16" />
+                                    <Skeleton className="h-3 w-20" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-3 w-full" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
     if (targets.length === 0) {
         return (
             <div className="bg-slate-800/80 backdrop-blur-sm rounded-lg p-4 border border-slate-700/50 shadow-xl">

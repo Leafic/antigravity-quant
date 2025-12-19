@@ -10,5 +10,6 @@ import java.util.Optional;
 @Repository
 public interface AutoTradeScheduleRepository extends JpaRepository<AutoTradeSchedule, Long> {
     List<AutoTradeSchedule> findByIsActiveTrue();
+    List<AutoTradeSchedule> findAllByAccountNo(String accountNo);
     Optional<AutoTradeSchedule> findBySymbolAndScheduleTime(String symbol, String scheduleTime);
 }

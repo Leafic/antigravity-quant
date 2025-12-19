@@ -27,6 +27,9 @@ public class AutoTradeSchedule {
     @Column(length = 100)
     private String name; // 종목명
 
+    @Column(length = 20)
+    private String accountNo;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TradeType type; // BUY, SELL

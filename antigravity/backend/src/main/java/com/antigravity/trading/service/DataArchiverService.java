@@ -1,9 +1,6 @@
 package com.antigravity.trading.service;
 
-import com.antigravity.trading.domain.entity.CandleHistory;
 import com.antigravity.trading.domain.entity.TargetStock;
-import com.antigravity.trading.infrastructure.api.KisApiClient;
-import com.antigravity.trading.repository.CandleHistoryRepository;
 import com.antigravity.trading.repository.TargetStockRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,8 +8,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -25,8 +20,7 @@ import java.util.List;
 public class DataArchiverService {
 
     private final TargetStockRepository targetStockRepository;
-    private final CandleHistoryRepository candleHistoryRepository;
-    private final KisApiClient kisApiClient;
+    private final DataPipelineService dataPipelineService;
 
     /**
      * 데이터 아카이빙 배치 작업
@@ -44,7 +38,7 @@ public class DataArchiverService {
             return;
         }
 
-        // 2. 각 타겟별 데이터 수집 및 계산
+        // 2. 각 타겟별 데이터 수집 (최근 1일)
         for (TargetStock target : targets) {
             processTarget(target);
         }
@@ -54,23 +48,11 @@ public class DataArchiverService {
 
     private void processTarget(TargetStock target) {
         log.debug("Processing target: {}", target.getName());
-
-        // TODO: 실제 API 호출 및 데이터 저장 로직 구현 (Mock)
-        // kisApiClient.getMinuteCandles(...)
-
-        // Mock: 현재 시점에 가상의 캔들 하나 저장
-        CandleHistory mockCandle = CandleHistory.builder()
-                .symbol(target.getSymbol())
-                .time(LocalDateTime.now().minusMinutes(1))
-                .open(new BigDecimal("70000"))
-                .high(new BigDecimal("70500"))
-                .low(new BigDecimal("69900"))
-                .close(new BigDecimal("70200"))
-                .volume(10000L)
-                .ma20(new BigDecimal("69800")) // Pre-calculated
-                .ma60(new BigDecimal("69500")) // Pre-calculated
-                .build();
-
-        candleHistoryRepository.save(mockCandle);
+        try {
+            // 실제 데이터 수집 (최근 3일치 수집하여 안전하게 갱신)
+            dataPipelineService.collectStockData(target.getSymbol(), 3);
+        } catch (Exception e) {
+            log.error("Failed to archive data for {}: {}", target.getName(), e.getMessage());
+        }
     }
 }

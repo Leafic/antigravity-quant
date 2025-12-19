@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import { LayoutDashboard, Calendar, Database, Menu, X } from 'lucide-react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { TradingDashboard } from './pages/TradingDashboard';
 import { SchedulerDashboard } from './pages/SchedulerDashboard';
 import { StockMasterPage } from './pages/StockMasterPage';
 import { PortfolioPage } from './pages/PortfolioPage';
 
 function App() {
-    const [currentPage, setCurrentPage] = useState<'trading' | 'scheduler' | 'stocks' | 'portfolio'>('trading');
+    const navigate = useNavigate();
+    const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
 
     const navItems = [
-        { id: 'trading', label: '트레이딩', icon: LayoutDashboard },
-        { id: 'scheduler', label: '스케줄러', icon: Calendar },
-        { id: 'stocks', label: '종목 관리', icon: Database },
-        { id: 'portfolio', label: '내 투자', icon: Menu },
+        { id: 'trading', path: '/trading', label: '트레이딩', icon: LayoutDashboard },
+        { id: 'scheduler', path: '/scheduler', label: '스케줄러', icon: Calendar },
+        { id: 'stocks', path: '/stocks', label: '종목 관리', icon: Database },
+        { id: 'portfolio', path: '/portfolio', label: '내 투자', icon: Menu },
     ];
 
     return (
@@ -35,12 +37,12 @@ function App() {
                 <nav className="p-4 space-y-2">
                     {navItems.map((item) => {
                         const Icon = item.icon;
-                        const isActive = currentPage === item.id;
+                        const isActive = location.pathname === item.path;
                         return (
                             <button
                                 key={item.id}
                                 onClick={() => {
-                                    setCurrentPage(item.id as any);
+                                    navigate(item.path);
                                     setMenuOpen(false);
                                 }}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive
@@ -57,9 +59,9 @@ function App() {
             </aside>
 
             {/* 메인 콘텐츠 */}
-            <div className="flex-1">
+            <div className="flex-1 overflow-x-hidden"> 
                 {/* 모바일 헤더 */}
-                <header className="lg:hidden bg-slate-800 border-b border-slate-700 p-4 flex items-center justify-between">
+                <header className="lg:hidden bg-slate-800 border-b border-slate-700 p-4 flex items-center justify-between sticky top-0 z-40">
                     <button
                         onClick={() => setMenuOpen(true)}
                         className="text-slate-400 hover:text-white"
@@ -72,10 +74,13 @@ function App() {
 
                 {/* 페이지 콘텐츠 */}
                 <div className="p-6">
-                    {currentPage === 'trading' && <TradingDashboard />}
-                    {currentPage === 'scheduler' && <SchedulerDashboard />}
-                    {currentPage === 'stocks' && <StockMasterPage />}
-                    {currentPage === 'portfolio' && <PortfolioPage />}
+                    <Routes>
+                        <Route path="/" element={<Navigate to="/trading" replace />} />
+                        <Route path="/trading" element={<TradingDashboard />} />
+                        <Route path="/scheduler" element={<SchedulerDashboard />} />
+                        <Route path="/stocks" element={<StockMasterPage />} />
+                        <Route path="/portfolio" element={<PortfolioPage />} />
+                    </Routes>
                 </div>
             </div>
 
